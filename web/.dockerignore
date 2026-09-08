@@ -1,0 +1,12 @@
+.react-router
+build
+node_modules
+README.md
+e2e
+playwright.config.ts
+playwright-report
+test-results
+.env
+.env.*
+!.env.example
+.DS_Store

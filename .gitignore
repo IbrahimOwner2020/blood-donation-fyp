@@ -1,0 +1,20 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Build outputs
+build/
+dist/
+.react-router/
+
+# Local data
+models/
+*.sqlite
+*.db

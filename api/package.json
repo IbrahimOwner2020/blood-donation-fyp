@@ -1,0 +1,29 @@
+{
+    "name": "api",
+    "scripts": {
+        "dev": "bun --env-file=../.env run --hot src/index.ts",
+        "start": "bun run src/index.ts",
+        "test": "bun --env-file=../.env test",
+        "test:unit": "bun --env-file=../.env test src/modules src/middleware src/lib src/services",
+        "test:integration": "bun --env-file=../.env test src/integration",
+        "db:generate": "bun --env-file=../.env run drizzle-kit generate",
+        "db:migrate": "bun --env-file=../.env run drizzle-kit migrate",
+        "db:migrate:runtime": "bun run src/db/migrate.ts",
+        "db:studio": "bun --env-file=../.env run drizzle-kit studio",
+        "db:seed": "bun --env-file=../.env run src/db/seed/index.ts",
+        "db:seed:admin": "bun --env-file=../.env run src/db/seed/admin-user-cli.ts",
+        "db:seed:admin:runtime": "bun run src/db/seed/admin-user-cli.ts"
+    },
+    "dependencies": {
+        "drizzle-orm": "^0.45.2",
+        "hono": "^4.13.5",
+        "mysql2": "^3.24.3",
+        "nodemailer": "^9.1.1",
+        "zod": "^4.5.4"
+    },
+    "devDependencies": {
+        "@types/bun": "latest",
+        "@types/nodemailer": "^6.4.17",
+        "drizzle-kit": "^0.31.4"
+    }
+}
