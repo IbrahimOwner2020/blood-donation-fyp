@@ -5,6 +5,7 @@
 import { z } from 'zod'
 
 import { userStatuses } from '../../db/schema/enums'
+import { PERMISSION_CODES } from '../../lib/permissions'
 
 const emailSchema = z
   .string({ required_error: 'Email is required' })
@@ -29,6 +30,11 @@ const roleIdsSchema = z
   .max(50)
   .optional()
 
+const permissionCodesSchema = z
+  .array(z.enum(PERMISSION_CODES))
+  .max(PERMISSION_CODES.length)
+  .optional()
+
 export const listUsersQuerySchema = z.object({
   status: z.enum(userStatuses).optional(),
   q: z.string().trim().max(255).optional(),
@@ -46,6 +52,7 @@ export const createUserBodySchema = z.object({
   name: nameSchema,
   email: emailSchema,
   password: passwordSchema,
+  facilityId: z.coerce.number().int().positive().nullable().optional(),
   status: z.enum(userStatuses).optional().default('ACTIVE'),
   /** Optional initial role assignment; requires roles:manage when provided. */
   roleIds: roleIdsSchema,
@@ -58,6 +65,7 @@ export const patchUserBodySchema = z
     name: nameSchema.optional(),
     email: emailSchema.optional(),
     password: passwordSchema.optional(),
+    facilityId: z.coerce.number().int().positive().nullable().optional(),
     status: z.enum(userStatuses).optional(),
   })
   .refine(
@@ -65,6 +73,7 @@ export const patchUserBodySchema = z
       body.name !== undefined ||
       body.email !== undefined ||
       body.password !== undefined ||
+      body.facilityId !== undefined ||
       body.status !== undefined,
     { message: 'At least one field is required' },
   )
@@ -106,6 +115,7 @@ export type RoleIdParam = z.infer<typeof roleIdParamSchema>
 export const createRoleBodySchema = z.object({
   name: roleNameSchema,
   description: roleDescriptionSchema,
+  permissionCodes: permissionCodesSchema,
 })
 
 export type CreateRoleBody = z.infer<typeof createRoleBodySchema>
@@ -114,9 +124,13 @@ export const updateRoleBodySchema = z
   .object({
     name: roleNameSchema.optional(),
     description: roleDescriptionSchema,
+    permissionCodes: permissionCodesSchema,
   })
   .refine(
-    (body) => body.name !== undefined || body.description !== undefined,
+    (body) =>
+      body.name !== undefined ||
+      body.description !== undefined ||
+      body.permissionCodes !== undefined,
     { message: 'At least one field is required' },
   )
 

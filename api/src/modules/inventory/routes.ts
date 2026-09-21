@@ -19,6 +19,7 @@ import { parseJsonBody, parseParams, parseQuery } from '../../lib/validate'
 import { requireAuth } from '../../middleware/require-auth'
 import { requirePermission } from '../../middleware/require-permission'
 import { InventoryAuditActions, recordActivity } from '../../services/audit'
+import { requireHospitalFacilityId } from '../auth/access-scope'
 import {
   inventoryExpiringQuerySchema,
   inventoryIdParamSchema,
@@ -61,7 +62,11 @@ inventoryRoutes.use('*', requireAuth)
  */
 inventoryRoutes.get('/', requirePermission('inventory:read'), async (c) => {
   const query = parseQuery(c, listInventoryQuerySchema)
-  const result = await listInventory(getDb(), query)
+  const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+  const result = await listInventory(
+    getDb(),
+    typeof facilityId === 'number' ? { ...query, facilityId } : query,
+  )
 
   return jsonOk(c, {
     inventory: result.items,
@@ -81,7 +86,11 @@ inventoryRoutes.get(
   requirePermission('inventory:read'),
   async (c) => {
     const query = parseQuery(c, inventorySummaryQuerySchema)
-    const summary = await getInventorySummary(getDb(), query)
+    const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+    const summary = await getInventorySummary(
+      getDb(),
+      typeof facilityId === 'number' ? { ...query, facilityId } : query,
+    )
     return jsonOk(c, { summary })
   },
 )
@@ -95,7 +104,11 @@ inventoryRoutes.get(
   requirePermission('inventory:read'),
   async (c) => {
     const query = parseQuery(c, inventoryLowStockQuerySchema)
-    const result = await getInventoryLowStock(getDb(), query)
+    const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+    const result = await getInventoryLowStock(
+      getDb(),
+      typeof facilityId === 'number' ? { ...query, facilityId } : query,
+    )
     return jsonOk(c, {
       asOf: result.asOf,
       threshold: result.threshold,
@@ -113,7 +126,11 @@ inventoryRoutes.get(
   requirePermission('inventory:read'),
   async (c) => {
     const query = parseQuery(c, inventoryExpiringQuerySchema)
-    const result = await listExpiringInventory(getDb(), query)
+    const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+    const result = await listExpiringInventory(
+      getDb(),
+      typeof facilityId === 'number' ? { ...query, facilityId } : query,
+    )
     return jsonOk(c, {
       inventory: result.items,
       total: result.total,
@@ -132,6 +149,10 @@ inventoryRoutes.get(
 inventoryRoutes.get('/:id', requirePermission('inventory:read'), async (c) => {
   const { id } = parseParams(c, inventoryIdParamSchema)
   const unit = await getInventoryById(getDb(), id)
+  const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+  if (typeof facilityId === 'number' && unit.facilityId !== facilityId) {
+    throw AppError.notFound('Inventory unit not found')
+  }
   return jsonOk(c, { inventory: unit })
 })
 
@@ -148,6 +169,19 @@ inventoryRoutes.patch(
     const actor = c.get('user')
     if (!actor?.id) {
       throw AppError.unauthorized('Authenticated user required')
+    }
+    const facilityId = requireHospitalFacilityId(actor, c.get('roles'))
+    if (typeof facilityId === 'number') {
+      if (body.facilityId !== undefined) {
+        throw AppError.forbidden('Hospital staff cannot reassign inventory units')
+      }
+      if (body.status !== 'ISSUED') {
+        throw AppError.forbidden('Hospital staff can only record usage by issuing units')
+      }
+      const existing = await getInventoryById(getDb(), id)
+      if (existing.facilityId !== facilityId) {
+        throw AppError.notFound('Inventory unit not found')
+      }
     }
 
     const result = await updateInventoryUnit(getDb(), id, body)

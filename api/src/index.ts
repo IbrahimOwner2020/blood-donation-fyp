@@ -11,6 +11,7 @@ import {
     requestLoggerMiddleware,
 } from './middleware'
 import { activityLogRoutes } from './modules/activity-logs'
+import { aiAnalysisRoutes } from './modules/ai-analysis'
 import { assistantRoutes } from './modules/assistant'
 import { authRoutes } from './modules/auth'
 import { bloodRequestRoutes } from './modules/blood-requests'
@@ -20,6 +21,7 @@ import { donationRoutes } from './modules/donations'
 import { donorRoutes } from './modules/donors'
 import { facilitiesRoutes } from './modules/facilities'
 import { inventoryRoutes } from './modules/inventory'
+import { meDonorRoutes } from './modules/me-donor'
 import { predictionRoutes } from './modules/predictions'
 import { alertRoutes } from './modules/alerts'
 import { notificationRoutes } from './modules/notifications'
@@ -66,6 +68,7 @@ v1.get('/health', (c) => {
 })
 
 v1.route('/auth', authRoutes)
+v1.route('/me/donor', meDonorRoutes)
 v1.route('/users', userRoutes)
 v1.route('/roles', roleRoutes)
 /** Activity / audit log list — owned by activity-logs (activity:read). */
@@ -85,6 +88,8 @@ v1.route('/blood-requests', bloodRequestRoutes)
 v1.route('/demand-records', demandRoutes)
 /** AI forecast run + persisted predictions — owned by predictions-api. */
 v1.route('/predictions', predictionRoutes)
+/** Daily AI supply analysis reports and cron entrypoint. */
+v1.route('/ai-analysis', aiAnalysisRoutes)
 /** Shortage alerts from predicted gap — owned by shortage-alerts. */
 v1.route('/alerts', alertRoutes)
 /** Donor notification preview/send/history — owned by notifications-api. */

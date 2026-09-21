@@ -69,7 +69,11 @@ export async function clientLoader({
     return { status: "unauthenticated" };
   }
 
-  if (!hasUiPermission(session, UI_PERMISSIONS.usersManage)) {
+  const canManageUsers =
+    hasUiPermission(session, UI_PERMISSIONS.usersManage) ||
+    hasUiPermission(session, UI_PERMISSIONS.usersManageFacility);
+
+  if (!canManageUsers) {
     return { status: "forbidden", session };
   }
 
@@ -131,8 +135,8 @@ export default function AdminUsersPage() {
         />
         <ForbiddenState
           title="Missing permission"
-          message="users:manage is required to list or edit users. The API remains the authority."
-          detail="UI gate: users:manage"
+          message="User management permission is required to list or edit users. The API remains the authority."
+          detail="UI gate: users:manage | users:manage:facility"
         />
       </div>
     );
@@ -158,7 +162,7 @@ export default function AdminUsersPage() {
   const canAssignRoles = hasUiPermission(
     data.session,
     UI_PERMISSIONS.rolesManage,
-  );
+  ) || hasUiPermission(data.session, UI_PERMISSIONS.rolesAssignFacility);
   const users = data.users ?? [];
   const qValue = searchParams.get("q") ?? data.filters.q ?? "";
   const statusValue = searchParams.get("status") ?? data.filters.status ?? "";
@@ -167,7 +171,7 @@ export default function AdminUsersPage() {
     <div>
       <PageHeader
         title="Admin · Users"
-        description="Create and manage staff accounts. Role assignment requires roles:manage."
+        description="Create and manage staff accounts. The API scopes facility managers to their assigned facility."
         actions={
           <Link
             to="/admin/users/new"
@@ -271,7 +275,7 @@ export default function AdminUsersPage() {
                     {!canAssignRoles && user.roles?.length ? (
                       <span className="sr-only">
                         {" "}
-                        (role edits require roles:manage)
+                        (role edits require role assignment permission)
                       </span>
                     ) : null}
                   </td>

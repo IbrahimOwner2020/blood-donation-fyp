@@ -21,6 +21,7 @@ export function AppShell({ session }: AppShellProps) {
       />
       <div className="flex min-h-0 flex-1">
         <Sidebar
+          session={session}
           open={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
         />

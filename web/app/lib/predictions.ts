@@ -13,9 +13,9 @@ import {
   parsePositiveInt,
 } from "~/lib/donors";
 
-export type HorizonDays = 7 | 14 | 30;
+export type HorizonDays = 7 | 14 | 30 | 60;
 
-export const HORIZON_DAY_OPTIONS = [7, 14, 30] as const satisfies readonly HorizonDays[];
+export const HORIZON_DAY_OPTIONS = [7, 14, 30, 60] as const satisfies readonly HorizonDays[];
 
 export type CandidateModelName =
   | "historical_average"
@@ -525,7 +525,8 @@ export async function runPrediction(
   if (
     input.horizonDays === 7 ||
     input.horizonDays === 14 ||
-    input.horizonDays === 30
+    input.horizonDays === 30 ||
+    input.horizonDays === 60
   ) {
     body.horizonDays = input.horizonDays;
   }
@@ -637,7 +638,7 @@ export function parseHorizonDays(
   fallback: HorizonDays = 7,
 ): HorizonDays {
   const parsed = Number.parseInt(String(value ?? "").trim(), 10);
-  if (parsed === 7 || parsed === 14 || parsed === 30) {
+  if (parsed === 7 || parsed === 14 || parsed === 30 || parsed === 60) {
     return parsed;
   }
   return fallback;

@@ -18,11 +18,11 @@ const BLOOD_GROUP_CODES = BLOOD_GROUP_SEEDS.map((g) => g.code) as [
 
 export const bloodGroupCodeSchema = z.enum(BLOOD_GROUP_CODES)
 
-/** docs/14 horizon: 7 | 14 | 30 */
+/** docs/14 horizon: 7 | 14 | 30 | 60 */
 export const horizonDaysSchema = z.coerce
   .number({ invalid_type_error: 'horizonDays must be a number' })
-  .refine((value): value is HorizonDays => value === 7 || value === 14 || value === 30, {
-    message: 'horizonDays must be 7, 14, or 30',
+  .refine((value): value is HorizonDays => value === 7 || value === 14 || value === 30 || value === 60, {
+    message: 'horizonDays must be 7, 14, 30, or 60',
   })
 
 const CANDIDATE_MODELS = [

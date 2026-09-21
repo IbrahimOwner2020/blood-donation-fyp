@@ -154,10 +154,10 @@ function extractBloodGroup(text: string): string | undefined {
   return match?.[2]
 }
 
-function extractHorizonDays(text: string): 7 | 14 | 30 | undefined {
-  const match = text.match(/\b(7|14|30)\s*(day|days)?\b/i)
+function extractHorizonDays(text: string): 7 | 14 | 30 | 60 | undefined {
+  const match = text.match(/\b(7|14|30|60)\s*(day|days)?\b/i)
   const value = match?.[1] ? Number.parseInt(match[1], 10) : undefined
-  return value === 7 || value === 14 || value === 30 ? value : undefined
+  return value === 7 || value === 14 || value === 30 || value === 60 ? value : undefined
 }
 
 function extractAlertStatus(text: string): 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED' | 'DISMISSED' | undefined {

@@ -62,20 +62,6 @@ async function main(): Promise<void> {
   const { db, pool } = createDb()
 
   try {
-    const bloodGroupsResult = await seedBloodGroups(db)
-    console.log(
-      JSON.stringify(
-        {
-          seed: 'blood_groups',
-          inserted: bloodGroupsResult?.inserted ?? 0,
-          skipped: bloodGroupsResult?.skipped ?? 0,
-          codes: bloodGroupsResult?.codes ?? [],
-        },
-        null,
-        2,
-      ),
-    )
-
     const rolesResult = await seedRolesPermissions(db)
     console.log(
       JSON.stringify(
@@ -89,6 +75,20 @@ async function main(): Promise<void> {
           mappingsSkipped: rolesResult?.mappingsSkipped ?? 0,
           roleNames: rolesResult?.roleNames ?? [],
           permissionCodes: rolesResult?.permissionCodes ?? [],
+        },
+        null,
+        2,
+      ),
+    )
+
+    const bloodGroupsResult = await seedBloodGroups(db)
+    console.log(
+      JSON.stringify(
+        {
+          seed: 'blood_groups',
+          inserted: bloodGroupsResult?.inserted ?? 0,
+          skipped: bloodGroupsResult?.skipped ?? 0,
+          codes: bloodGroupsResult?.codes ?? [],
         },
         null,
         2,

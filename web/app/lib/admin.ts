@@ -16,6 +16,7 @@ export type AdminUser = {
   id: number;
   name: string;
   email: string;
+  facilityId: number | null;
   status: string;
   createdAt?: string;
   updatedAt?: string;
@@ -25,6 +26,13 @@ export type AdminUser = {
 export type RoleListItem = {
   id: number;
   name: string;
+  description: string | null;
+  permissionCodes: string[];
+};
+
+export type PermissionListItem = {
+  id: number;
+  code: string;
   description: string | null;
 };
 
@@ -38,6 +46,7 @@ export type CreateUserInput = {
   email: string;
   password: string;
   status?: UserStatus;
+  facilityId?: number | null;
   roleIds?: number[];
 };
 
@@ -46,6 +55,7 @@ export type PatchUserInput = {
   email?: string;
   password?: string;
   status?: UserStatus;
+  facilityId?: number | null;
 };
 
 export type AssignUserRolesInput = {
@@ -84,6 +94,10 @@ export function normalizeAdminUser(value: unknown): AdminUser | null {
     id: value.id,
     name: name || email || `User ${value.id}`,
     email,
+    facilityId:
+      typeof value.facilityId === "number" && Number.isFinite(value.facilityId)
+        ? value.facilityId
+        : null,
     status,
     createdAt: typeof value.createdAt === "string" ? value.createdAt : undefined,
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : undefined,
@@ -107,6 +121,32 @@ function normalizeRoleListItem(value: unknown): RoleListItem | null {
     id: value.id,
     name: name || `Role ${value.id}`,
     description,
+    permissionCodes: Array.isArray(value.permissionCodes)
+      ? value.permissionCodes
+          .filter((code): code is string => typeof code === "string")
+          .map((code) => code.trim())
+          .filter(Boolean)
+      : [],
+  };
+}
+
+function normalizePermissionListItem(value: unknown): PermissionListItem | null {
+  if (!isRecord(value) || typeof value.id !== "number") {
+    return null;
+  }
+  const code = typeof value.code === "string" ? value.code.trim() : "";
+  if (!code) {
+    return null;
+  }
+  return {
+    id: value.id,
+    code,
+    description:
+      typeof value.description === "string"
+        ? value.description
+        : value.description === null
+          ? null
+          : null,
   };
 }
 
@@ -161,6 +201,9 @@ export async function createAdminUser(
   if (input.status) {
     body.status = input.status;
   }
+  if (input.facilityId !== undefined) {
+    body.facilityId = input.facilityId;
+  }
   if (Array.isArray(input.roleIds) && input.roleIds.length > 0) {
     body.roleIds = input.roleIds;
   }
@@ -193,6 +236,9 @@ export async function patchAdminUser(
   }
   if (input.status !== undefined) {
     body.status = input.status;
+  }
+  if (input.facilityId !== undefined) {
+    body.facilityId = input.facilityId;
   }
 
   const data = await apiFetch<{ user?: unknown }>(`/users/${userId}`, {
@@ -246,12 +292,35 @@ export async function listAdminRoles(): Promise<RoleListItem[]> {
 export type CreateRoleInput = {
   name: string;
   description?: string | null;
+  permissionCodes?: string[];
 };
 
 export type UpdateRoleInput = {
   name?: string;
   description?: string | null;
+  permissionCodes?: string[];
 };
+
+export async function listAdminPermissions(): Promise<PermissionListItem[]> {
+  const data = await apiFetch<{ permissions?: unknown }>("/roles/permissions", {
+    method: "GET",
+  });
+  const raw = Array.isArray(data?.permissions) ? data.permissions : [];
+  return raw
+    .map(normalizePermissionListItem)
+    .filter((permission): permission is PermissionListItem => permission !== null);
+}
+
+export async function getAdminRole(roleId: number): Promise<RoleListItem> {
+  const data = await apiFetch<{ role?: unknown }>(`/roles/${roleId}`, {
+    method: "GET",
+  });
+  const role = normalizeRoleListItem(data?.role);
+  if (!role) {
+    throw new Error("Invalid role payload from API");
+  }
+  return role;
+}
 
 /** POST /roles */
 export async function createAdminRole(
@@ -262,6 +331,9 @@ export async function createAdminRole(
   };
   if (input.description !== undefined) {
     body.description = input.description?.trim() || null;
+  }
+  if (Array.isArray(input.permissionCodes)) {
+    body.permissionCodes = input.permissionCodes;
   }
 
   const data = await apiFetch<{ role?: unknown }>("/roles", {
@@ -286,6 +358,9 @@ export async function updateAdminRole(
   }
   if (input.description !== undefined) {
     body.description = input.description?.trim() || null;
+  }
+  if (Array.isArray(input.permissionCodes)) {
+    body.permissionCodes = input.permissionCodes;
   }
 
   const data = await apiFetch<{ role?: unknown }>(`/roles/${roleId}`, {
@@ -339,4 +414,17 @@ export function roleIdsFromFormData(formData: FormData): number[] {
     }
   }
   return ids;
+}
+
+/** Collect checked permission codes from a FormData field named `permissionCodes`. */
+export function permissionCodesFromFormData(formData: FormData): string[] {
+  const values = formData.getAll("permissionCodes");
+  const codes: string[] = [];
+  for (const value of values) {
+    const code = String(value ?? "").trim();
+    if (code && !codes.includes(code)) {
+      codes.push(code);
+    }
+  }
+  return codes;
 }

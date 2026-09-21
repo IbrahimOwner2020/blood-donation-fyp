@@ -23,6 +23,17 @@ def test_forecast_request_accepts_valid_payload() -> None:
     assert len(payload.history) == 10
 
 
+def test_forecast_request_accepts_60_day_horizon() -> None:
+    payload = ForecastRequest.model_validate(
+        {
+            "blood_group": "O+",
+            "horizon_days": 60,
+            "history": make_history(70),
+        }
+    )
+    assert payload.horizon_days == 60
+
+
 def test_forecast_request_rejects_invalid_blood_group() -> None:
     with pytest.raises(ValidationError):
         ForecastRequest.model_validate(

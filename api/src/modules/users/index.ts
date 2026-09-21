@@ -24,6 +24,7 @@ export {
   toAdminUser,
   type AdminUser,
   type AdminRoleSummary,
+  type PermissionListItem,
   type RoleListItem,
   type UserRowWithoutHash,
 } from './serialize'
@@ -34,9 +35,12 @@ export {
   patchUser,
   softDeactivateUser,
   assignUserRoles,
+  listPermissions,
   listRoles,
   getRoleById,
+  getRoleWithPermissions,
   createRole,
   updateRole,
+  type UserManagementScope,
 } from './service'
 export { userRoutes, roleRoutes } from './routes'

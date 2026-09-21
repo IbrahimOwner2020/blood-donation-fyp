@@ -27,6 +27,7 @@ export type PublicBloodGroup = {
 
 export type PublicDonor = {
   id: number;
+  userId: number | null;
   donorNumber: string;
   firstName: string;
   lastName: string;
@@ -162,6 +163,10 @@ export function normalizeDonor(value: unknown): PublicDonor | null {
 
   return {
     id: value.id,
+    userId:
+      typeof value.userId === "number" && Number.isFinite(value.userId)
+        ? value.userId
+        : null,
     donorNumber:
       typeof value.donorNumber === "string" ? value.donorNumber.trim() : "",
     firstName:

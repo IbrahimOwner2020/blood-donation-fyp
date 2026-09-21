@@ -16,7 +16,7 @@ export const BLOOD_GROUPS = [
 
 export type BloodGroup = (typeof BLOOD_GROUPS)[number]
 
-export type HorizonDays = 7 | 14 | 30
+export type HorizonDays = 7 | 14 | 30 | 60
 
 export type BaselineModelName =
   | 'historical_average'

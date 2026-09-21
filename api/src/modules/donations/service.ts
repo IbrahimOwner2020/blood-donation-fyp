@@ -9,6 +9,7 @@ import {
   count,
   eq,
   gte,
+  inArray,
   lte,
   type SQL,
 } from 'drizzle-orm'
@@ -339,6 +340,7 @@ function toPublicOrThrow(
 function buildListConditions(
   filters: ListDonationsQuery,
   resolvedBloodGroupId?: number,
+  db?: Db,
 ): SQL | undefined {
   const parts: SQL[] = []
 
@@ -347,6 +349,17 @@ function buildListConditions(
   }
   if (typeof filters.donationCentreId === 'number') {
     parts.push(eq(donations.donationCentreId, filters.donationCentreId))
+  }
+  if (typeof filters.facilityId === 'number' && db) {
+    parts.push(
+      inArray(
+        donations.id,
+        db
+          .select({ donationId: bloodInventory.donationId })
+          .from(bloodInventory)
+          .where(eq(bloodInventory.facilityId, filters.facilityId)),
+      ),
+    )
   }
   if (typeof resolvedBloodGroupId === 'number') {
     parts.push(eq(donations.bloodGroupId, resolvedBloodGroupId))
@@ -390,7 +403,7 @@ export async function listDonations(
     resolvedBloodGroupId = group.id
   }
 
-  const whereClause = buildListConditions(query, resolvedBloodGroupId)
+  const whereClause = buildListConditions(query, resolvedBloodGroupId, db)
 
   const [totalRow] = await db
     .select({ value: count() })
@@ -434,10 +447,25 @@ export async function listDonations(
 export async function getDonationById(
   db: Executor,
   donationId: number,
+  options: { facilityId?: number } = {},
 ): Promise<PublicDonation> {
   const loaded = await loadDonation(db, donationId)
   if (!loaded) {
     throw AppError.notFound('Donation not found')
+  }
+  if (typeof options.facilityId === 'number') {
+    const [row] = await db
+      .select({ value: count() })
+      .from(bloodInventory)
+      .where(
+        and(
+          eq(bloodInventory.donationId, donationId),
+          eq(bloodInventory.facilityId, options.facilityId),
+        ),
+      )
+    if (Number(row?.value ?? 0) === 0) {
+      throw AppError.notFound('Donation not found')
+    }
   }
   const inventoryUnitCount = await countInventoryForDonation(db, donationId)
   return toPublicOrThrow(loaded, { inventoryUnitCount })

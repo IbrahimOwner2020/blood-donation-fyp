@@ -18,11 +18,13 @@ import { PageHeader } from "~/components/ui/PageHeader";
 import {
   createAdminUser,
   listAdminRoles,
+  parsePositiveInt,
   roleIdsFromFormData,
   type RoleListItem,
   type UserStatus,
 } from "~/lib/admin";
 import { ApiRequestError } from "~/lib/api";
+import { listFacilities, type PublicFacility } from "~/lib/blood-requests";
 import {
   UI_PERMISSIONS,
   fetchAuthSession,
@@ -39,7 +41,9 @@ type NewUserLoaderData =
       status: "ok";
       session: AuthSession;
       roles: RoleListItem[];
+      facilities: PublicFacility[];
       canAssignRoles: boolean;
+      isFacilityScoped: boolean;
     }
   | { status: "forbidden" }
   | { status: "error"; message: string }
@@ -68,16 +72,30 @@ export async function clientLoader(
     return { status: "unauthenticated" };
   }
 
-  if (!hasUiPermission(session, UI_PERMISSIONS.usersManage)) {
+  const canManageAllUsers = hasUiPermission(session, UI_PERMISSIONS.usersManage);
+  const canManageFacilityUsers = hasUiPermission(
+    session,
+    UI_PERMISSIONS.usersManageFacility,
+  );
+
+  if (!canManageAllUsers && !canManageFacilityUsers) {
     return { status: "forbidden" };
   }
 
-  const canAssignRoles = hasUiPermission(session, UI_PERMISSIONS.rolesManage);
+  const canAssignRoles =
+    hasUiPermission(session, UI_PERMISSIONS.rolesManage) ||
+    hasUiPermission(session, UI_PERMISSIONS.rolesAssignFacility);
+  const canReadFacilities = hasUiPermission(session, UI_PERMISSIONS.facilitiesRead);
+  const isFacilityScoped = !canManageAllUsers && canManageFacilityUsers;
   let roles: RoleListItem[] = [];
+  let facilities: PublicFacility[] = [];
 
   if (canAssignRoles) {
     try {
-      roles = await listAdminRoles();
+      [roles, facilities] = await Promise.all([
+        listAdminRoles(),
+        listFacilities({ active: true }),
+      ]);
     } catch (error) {
       // Role list is optional for create when assignment UI fails — still allow create.
       if (!(error instanceof ApiRequestError && error.status === 403)) {
@@ -88,9 +106,20 @@ export async function clientLoader(
         return { status: "error", message };
       }
     }
+  } else if (canReadFacilities) {
+    facilities = await listFacilities({ active: true }).catch(
+      () => [] as PublicFacility[],
+    );
   }
 
-  return { status: "ok", session, roles, canAssignRoles };
+  return {
+    status: "ok",
+    session,
+    roles,
+    facilities,
+    canAssignRoles,
+    isFacilityScoped,
+  };
 }
 
 clientLoader.hydrate = true as const;
@@ -101,7 +130,11 @@ export function HydrateFallback() {
 
 export async function clientAction({ request }: ClientActionFunctionArgs) {
   const session = await fetchAuthSession().catch(() => null);
-  if (!session || !hasUiPermission(session, UI_PERMISSIONS.usersManage)) {
+  const canManageUsers =
+    Boolean(session) &&
+    (hasUiPermission(session, UI_PERMISSIONS.usersManage) ||
+      hasUiPermission(session, UI_PERMISSIONS.usersManageFacility));
+  if (!session || !canManageUsers) {
     return data<NewUserActionData>(
       { error: "You do not have permission to create users." },
       { status: 403 },
@@ -117,8 +150,12 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
     .toUpperCase();
   const status: UserStatus =
     statusRaw === "INACTIVE" ? "INACTIVE" : "ACTIVE";
-  const canAssignRoles = hasUiPermission(session, UI_PERMISSIONS.rolesManage);
+  const canAssignRoles =
+    hasUiPermission(session, UI_PERMISSIONS.rolesManage) ||
+    hasUiPermission(session, UI_PERMISSIONS.rolesAssignFacility);
   const roleIds = canAssignRoles ? roleIdsFromFormData(formData) : [];
+  const facilityRaw = String(formData.get("facilityId") || "").trim();
+  const facilityId = facilityRaw ? parsePositiveInt(facilityRaw) : NaN;
 
   if (!name || !email || !password) {
     return data<NewUserActionData>(
@@ -133,6 +170,12 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
       { status: 400 },
     );
   }
+  if (facilityRaw && !Number.isFinite(facilityId)) {
+    return data<NewUserActionData>(
+      { error: "Facility is invalid." },
+      { status: 400 },
+    );
+  }
 
   try {
     const user = await createAdminUser({
@@ -140,6 +183,7 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
       email,
       password,
       status,
+      facilityId: Number.isFinite(facilityId) ? facilityId : null,
       roleIds: canAssignRoles && roleIds.length > 0 ? roleIds : undefined,
     });
     throw redirect(`/admin/users/${user.id}`);
@@ -186,7 +230,7 @@ export default function AdminUsersNewPage() {
         <ForbiddenState
           title="Missing permission"
           message="users:manage is required to create users."
-          detail="UI gate: users:manage"
+          detail="UI gate: users:manage | users:manage:facility"
           action={
             <Link to="/admin/users" className="text-sm text-nbts-teal underline">
               Back to users
@@ -211,6 +255,11 @@ export default function AdminUsersNewPage() {
   }
 
   const roles = data.roles ?? [];
+  const facilities = data.facilities ?? [];
+  const defaultFacilityId =
+    data.isFacilityScoped && facilities.length > 0
+      ? String(facilities[0].id)
+      : "";
 
   return (
     <div>
@@ -287,13 +336,34 @@ export default function AdminUsersNewPage() {
           </select>
         </label>
 
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-nbts-ink">Healthcare facility</span>
+          <select
+            name="facilityId"
+            defaultValue={defaultFacilityId}
+            className="rounded border border-nbts-border bg-nbts-surface px-3 py-2"
+          >
+            {data.isFacilityScoped ? null : <option value="">No facility</option>}
+            {facilities.map((facility) => (
+              <option key={facility.id} value={facility.id}>
+                {facility.name} ({facility.district}, {facility.region})
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-nbts-muted">
+            {data.isFacilityScoped
+              ? "Your facility is applied by the API."
+              : "Required when assigning Hospital Staff or Facility Manager."}
+          </span>
+        </label>
+
         {data.canAssignRoles ? (
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium text-nbts-ink">
               Initial roles
             </legend>
             <p className="text-xs text-nbts-muted">
-              Optional. Requires roles:manage on the API when role IDs are sent.
+              Optional. The API limits facility managers to facility-safe roles.
             </p>
             {roles.length === 0 ? (
               <p className="text-sm text-nbts-muted">No roles available.</p>
@@ -326,8 +396,8 @@ export default function AdminUsersNewPage() {
           </fieldset>
         ) : (
           <p className="rounded border border-dashed border-nbts-border px-3 py-2 text-xs text-nbts-muted">
-            Role assignment is hidden without roles:manage. You can still create
-            the user, then ask an administrator to assign roles.
+            Role assignment is hidden without role assignment permission. You
+            can still create the user, then ask an administrator to assign roles.
           </p>
         )}
 

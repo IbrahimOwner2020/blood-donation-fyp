@@ -9,8 +9,13 @@ import { ApiRequestError, apiFetch } from "~/lib/api";
 /** Common UI gate codes that mirror API permission codes (display only). */
 export const UI_PERMISSIONS = {
   usersManage: "users:manage",
+  usersManageFacility: "users:manage:facility",
   rolesManage: "roles:manage",
+  rolesAssignFacility: "roles:assign:facility",
   activityRead: "activity:read",
+  facilitiesRead: "facilities:read",
+  facilitiesCreate: "facilities:create",
+  facilitiesUpdate: "facilities:update",
   donorsRead: "donors:read",
   donorsCreate: "donors:create",
   donorsUpdate: "donors:update",
@@ -38,6 +43,7 @@ export type AuthSession = {
   userId: string;
   email: string;
   displayName: string;
+  facilityId: number | null;
   /**
    * Display labels only — not authoritative permission checks.
    * Populated from /auth/me roles when available.
@@ -60,6 +66,7 @@ export type PublicUserDto = {
   id: number;
   name: string;
   email: string;
+  facilityId?: number | null;
   status: string;
   createdAt?: string;
   updatedAt?: string;
@@ -70,6 +77,8 @@ type LoginResponse = {
   roles?: string[];
   permissions?: string[];
 };
+
+type RegisterDonorResponse = LoginResponse;
 
 type MeResponse = {
   user: PublicUserDto;
@@ -108,9 +117,44 @@ export function toAuthSession(
     userId: String(user.id),
     email,
     displayName,
+    facilityId:
+      typeof user.facilityId === "number" && Number.isFinite(user.facilityId)
+        ? user.facilityId
+        : null,
     roleLabels,
     permissions,
   };
+}
+
+export type RegisterDonorInput = {
+  name: string;
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  bloodGroupId: number;
+};
+
+export async function registerDonorAccount(
+  input: RegisterDonorInput,
+): Promise<AuthSession> {
+  const data = await apiFetch<RegisterDonorResponse>("/auth/register-donor", {
+    method: "POST",
+    json: {
+      name: input.name.trim(),
+      email: input.email.trim(),
+      password: input.password,
+      firstName: input.firstName.trim(),
+      lastName: input.lastName.trim(),
+      phone: input.phone.trim(),
+      bloodGroupId: input.bloodGroupId,
+    },
+  });
+  return sessionFromUser(data.user, {
+    roles: data?.roles,
+    permissions: data?.permissions,
+  });
 }
 
 /** Map API public user → UI session. */

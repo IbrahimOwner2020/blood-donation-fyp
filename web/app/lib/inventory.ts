@@ -97,6 +97,11 @@ export type ListLowStockResult = {
   rows: InventorySummaryRow[];
 };
 
+export type UpdateInventoryUnitInput = {
+  status?: InventoryStatus;
+  facilityId?: number | null;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -497,6 +502,25 @@ export async function getInventoryUnit(
   const unit = normalizeInventoryUnit(candidate);
   if (!unit) {
     throw new Error("Invalid inventory unit payload from API");
+  }
+  return unit;
+}
+
+export async function updateInventoryUnit(
+  unitId: number,
+  input: UpdateInventoryUnitInput,
+): Promise<PublicInventoryUnit> {
+  const body: Record<string, unknown> = {};
+  if (input.status !== undefined) body.status = input.status;
+  if (input.facilityId !== undefined) body.facilityId = input.facilityId;
+
+  const data = await apiFetch<{ inventory?: unknown }>(`/inventory/${unitId}`, {
+    method: "PATCH",
+    json: body,
+  });
+  const unit = normalizeInventoryUnit(data?.inventory);
+  if (!unit) {
+    throw new Error("Invalid inventory payload from API");
   }
   return unit;
 }

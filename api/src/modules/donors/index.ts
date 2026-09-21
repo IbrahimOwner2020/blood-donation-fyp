@@ -31,6 +31,7 @@ export {
   createDonor,
   deactivateDonor,
   getDonorById,
+  getDonorByUserId,
   listDonors,
   updateDonor,
   type ListDonorsResult,

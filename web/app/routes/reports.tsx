@@ -5,6 +5,7 @@
 
 import {
   Form,
+  Link,
   redirect,
   useLoaderData,
   useNavigation,
@@ -26,6 +27,10 @@ import {
   type AuthSession,
 } from "~/lib/auth";
 import { BLOOD_GROUP_OPTIONS } from "~/lib/donors";
+import {
+  listAiAnalysisReports,
+  type PublicAiAnalysisRun,
+} from "~/lib/ai-analysis";
 import {
   fetchDemandReport,
   fetchDonationsReport,
@@ -63,6 +68,7 @@ type ReportsLoaderData =
       demand: ReportSectionStatus<DemandReport>;
       predictions: ReportSectionStatus<PredictionsReport>;
       notifications: ReportSectionStatus<NotificationsReport>;
+      aiReports: PublicAiAnalysisRun[];
     }
   | {
       status: "forbidden";
@@ -118,13 +124,14 @@ export async function clientLoader({
   };
 
   try {
-    const [inventory, donations, demand, predictions, notifications] =
+    const [inventory, donations, demand, predictions, notifications, aiReports] =
       await Promise.all([
         fetchInventoryReport(params),
         fetchDonationsReport(params),
         fetchDemandReport(params),
         fetchPredictionsReport(params),
         fetchNotificationsReport(params),
+        listAiAnalysisReports({ limit: 5 }).then((result) => result.reports),
       ]);
 
     return {
@@ -136,6 +143,7 @@ export async function clientLoader({
       demand,
       predictions,
       notifications,
+      aiReports,
     };
   } catch (error) {
     const message =
@@ -583,6 +591,35 @@ export default function ReportsPage() {
                 />
               </>
             ))}
+          </SectionShell>
+
+          <SectionShell
+            title="AI report"
+            description="Latest daily AI supply conclusions and recommended outreach."
+          >
+            {data.aiReports.length === 0 ? (
+              <EmptyState
+                title="No AI reports yet"
+                description="Run the daily AI analysis to attach conclusions and donor recommendations."
+              />
+            ) : (
+              <SimpleTable
+                headers={["Report", "Risk", "Trigger", "Conclusion"]}
+                rows={data.aiReports.map((report) => [
+                  `#${report.id}`,
+                  report.riskLevel,
+                  report.triggerType,
+                  report.conclusion,
+                ])}
+                emptyLabel="No AI reports yet."
+              />
+            )}
+            <Link
+              to="/ai-reports"
+              className="mt-3 inline-flex text-sm font-semibold text-nbts-blood underline"
+            >
+              Open AI reports
+            </Link>
           </SectionShell>
 
           <SectionShell

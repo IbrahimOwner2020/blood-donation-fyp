@@ -1,7 +1,12 @@
 import {
+  Form,
   Link,
+  data,
   redirect,
+  useActionData,
   useLoaderData,
+  useNavigation,
+  type ClientActionFunctionArgs,
   type ClientLoaderFunctionArgs,
   type MetaFunction,
 } from "react-router";
@@ -27,6 +32,7 @@ import {
   isForbiddenApiError,
   isInventoryUnavailableError,
   parsePositiveInt,
+  updateInventoryUnit,
   type PublicInventoryUnit,
 } from "~/lib/inventory";
 import { ApiRequestError } from "~/lib/api";
@@ -65,6 +71,11 @@ type InventoryDetailLoaderData =
       message: string;
       unitId: string;
     };
+
+type InventoryDetailActionData = {
+  error?: string;
+  success?: string;
+};
 
 export async function clientLoader({
   request,
@@ -156,8 +167,55 @@ export function HydrateFallback() {
   return <LoadingState label="Loading inventory unit…" />;
 }
 
+export async function clientAction({
+  request,
+  params,
+}: ClientActionFunctionArgs) {
+  const unitId = parsePositiveInt(params?.id);
+  if (!Number.isFinite(unitId)) {
+    return data<InventoryDetailActionData>(
+      { error: "Invalid inventory unit id." },
+      { status: 400 },
+    );
+  }
+
+  const session = await fetchAuthSession();
+  if (!session || !hasUiPermission(session, UI_PERMISSIONS.inventoryUpdate)) {
+    return data<InventoryDetailActionData>(
+      { error: "You do not have permission to update inventory." },
+      { status: 403 },
+    );
+  }
+
+  const formData = await request.formData();
+  const intent = String(formData.get("intent") || "").trim();
+  if (intent !== "issue") {
+    return data<InventoryDetailActionData>(
+      { error: "Unknown inventory action." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    await updateInventoryUnit(unitId, { status: "ISSUED" });
+    return data<InventoryDetailActionData>({ success: "Usage recorded." });
+  } catch (error) {
+    const message =
+      error instanceof ApiRequestError
+        ? error.message
+        : "Unable to record usage.";
+    return data<InventoryDetailActionData>(
+      { error: message },
+      { status: error instanceof ApiRequestError ? error.status || 400 : 500 },
+    );
+  }
+}
+
 export default function InventoryDetailPage() {
   const data = useLoaderData<InventoryDetailLoaderData>();
+  const actionData = useActionData<InventoryDetailActionData>();
+  const navigation = useNavigation();
+  const busy = navigation.state === "submitting";
 
   if (data?.status === "forbidden") {
     return (
@@ -247,6 +305,9 @@ export default function InventoryDetailPage() {
   }
 
   const unit = data.unit;
+  const canRecordUsage =
+    hasUiPermission(data.session, UI_PERMISSIONS.inventoryUpdate) &&
+    (unit.status === "AVAILABLE" || unit.status === "RESERVED");
 
   return (
     <div>
@@ -262,6 +323,17 @@ export default function InventoryDetailPage() {
           </Link>
         }
       />
+
+      {actionData?.error ? (
+        <div className="mb-4">
+          <ErrorState title="Could not record usage" message={actionData.error} />
+        </div>
+      ) : null}
+      {actionData?.success ? (
+        <p className="mb-4 rounded border border-nbts-teal/30 bg-nbts-teal-soft px-4 py-3 text-sm text-nbts-ink">
+          {actionData.success}
+        </p>
+      ) : null}
 
       <dl className="grid gap-4 rounded-lg border border-nbts-border bg-nbts-panel p-5 sm:grid-cols-2">
         <div>
@@ -322,6 +394,26 @@ export default function InventoryDetailPage() {
           </dd>
         </div>
       </dl>
+
+      {canRecordUsage ? (
+        <Form
+          method="post"
+          className="mt-5 rounded-lg border border-nbts-border bg-nbts-panel p-5"
+        >
+          <input type="hidden" name="intent" value="issue" />
+          <h2 className="text-base font-semibold text-nbts-ink">Record usage</h2>
+          <p className="mt-1 text-sm text-nbts-muted">
+            Marks this unit as issued through the inventory API.
+          </p>
+          <button
+            type="submit"
+            disabled={busy}
+            className="mt-4 rounded bg-nbts-blood px-4 py-2 text-sm font-medium text-white hover:bg-nbts-blood-dark disabled:opacity-60"
+          >
+            {busy ? "Recording..." : "Mark as issued"}
+          </button>
+        </Form>
+      ) : null}
     </div>
   );
 }

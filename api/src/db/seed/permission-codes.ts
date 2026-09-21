@@ -5,8 +5,13 @@
 
 export const PERMISSION_CODES = [
   'users:manage',
+  'users:manage:facility',
   'roles:manage',
+  'roles:assign:facility',
   'activity:read',
+  'facilities:read',
+  'facilities:create',
+  'facilities:update',
   'donors:read',
   'donors:create',
   'donors:update',
@@ -30,8 +35,15 @@ export type PermissionCode = (typeof PERMISSION_CODES)[number]
 
 export const ROLE_NAMES = [
   'System Administrator',
+  'Facility Manager',
+  'Donor Manager',
+  'Blood Collector',
+  'Blood Bank Manager',
+  'Doctor',
   'NBTS Blood Bank Officer',
   'Authorized Manager',
+  'Registered Donor',
+  'Hospital Staff',
 ] as const
 
 export type RoleName = (typeof ROLE_NAMES)[number]

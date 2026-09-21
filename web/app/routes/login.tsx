@@ -151,6 +151,12 @@ export default function LoginPage() {
             Continue
           </button>
         </Form>
+        <p className="mt-5 text-center text-sm text-nbts-muted">
+          New donor?{" "}
+          <a href="/register-donor" className="font-medium text-nbts-teal underline">
+            Register as a donor
+          </a>
+        </p>
       </div>
     </div>
   );

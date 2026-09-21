@@ -126,6 +126,11 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
       eligibilityStatus,
       active: true,
     });
+    if (!hasUiPermission(session, UI_PERMISSIONS.donorsRead)) {
+      throw redirect(
+        `/donations/new?donorId=${donor.id}&bloodGroupId=${donor.bloodGroupId}`,
+      );
+    }
     throw redirect(`/donors/${donor.id}`);
   } catch (error) {
     if (error instanceof Response) {

@@ -10,8 +10,8 @@
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 
-import { getDb } from '../../db'
-import { users } from '../../db/schema'
+import { getDb, withTransaction } from '../../db'
+import { bloodGroups, donors, roles, userRoles, users } from '../../db/schema'
 import { AppError } from '../../lib/errors'
 import { getEnv } from '../../lib/env'
 import { logInfo, logWarn } from '../../lib/logger'
@@ -21,6 +21,7 @@ import { parseJsonBody } from '../../lib/validate'
 import { attachUserAccess } from '../../middleware/require-permission'
 import { requireAuth } from '../../middleware/require-auth'
 import { AuthAuditActions, recordActivity } from '../../services/audit'
+import { DonorAuditActions } from '../../services/audit'
 import {
   clearSessionCookie,
   readSessionId,
@@ -29,7 +30,11 @@ import {
 } from './cookies'
 import { DEFAULT_SESSION_TTL_SECONDS } from './constants'
 import { hashPassword, verifyPassword } from './password'
-import { changePasswordBodySchema, loginBodySchema } from './schemas'
+import {
+  changePasswordBodySchema,
+  loginBodySchema,
+  registerDonorBodySchema,
+} from './schemas'
 import { toPublicUser, type UserRow } from './serialize'
 import {
   createSession,
@@ -56,6 +61,7 @@ type AuthAuditEvent =
   | 'logout'
   | 'me'
   | 'change_password'
+  | 'register_donor'
 
 /**
  * Adapter from auth route call sites → activity_logs writer.
@@ -78,6 +84,7 @@ async function recordAuthAuditEvent(
     logout: AuthAuditActions.LOGOUT,
     me: AuthAuditActions.ME,
     change_password: AuthAuditActions.CHANGE_PASSWORD,
+    register_donor: 'auth.register_donor',
   } as const
 
   const actorUserId =
@@ -92,6 +99,8 @@ async function recordAuthAuditEvent(
     event === 'me' ||
     event === 'change_password'
       ? 'user'
+      : event === 'register_donor'
+        ? 'user'
       : 'auth'
 
   const metadata: Record<string, string | number | boolean | null | undefined> =
@@ -120,6 +129,49 @@ async function recordAuthAuditEvent(
   })
 }
 
+function isDuplicateEntryError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+  const code =
+    'code' in error && typeof (error as { code?: unknown }).code === 'string'
+      ? (error as { code: string }).code
+      : ''
+  const errno =
+    'errno' in error && typeof (error as { errno?: unknown }).errno === 'number'
+      ? (error as { errno: number }).errno
+      : undefined
+  const message =
+    error instanceof Error
+      ? error.message
+      : 'message' in error && typeof (error as { message?: unknown }).message === 'string'
+        ? (error as { message: string }).message
+        : ''
+  return (
+    code === 'ER_DUP_ENTRY' ||
+    errno === 1062 ||
+    message.toLowerCase().includes('duplicate')
+  )
+}
+
+async function generateUniqueDonorNumber(
+  db: ReturnType<typeof getDb>,
+): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const suffix = crypto.randomUUID().replace(/-/g, '').slice(0, 10).toUpperCase()
+    const donorNumber = `DON-${suffix}`
+    const rows = await db
+      .select({ id: donors.id })
+      .from(donors)
+      .where(eq(donors.donorNumber, donorNumber))
+      .limit(1)
+    if (!rows?.[0]?.id) {
+      return donorNumber
+    }
+  }
+  throw AppError.internal('Failed to generate donor number')
+}
+
 function clientIp(c: { req: { header: (name: string) => string | undefined } }): string | null {
   const forwarded = c.req.header('x-forwarded-for')
   if (forwarded) {
@@ -140,6 +192,7 @@ function mapUserRow(row: typeof users.$inferSelect): UserRow {
     name: row.name,
     email: row.email,
     passwordHash: row.passwordHash,
+    facilityId: row.facilityId ?? null,
     status: row.status,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -206,6 +259,151 @@ authRoutes.post('/login', async (c) => {
   }
 
   return jsonOk(c, { user: publicUser })
+})
+
+/**
+ * POST /auth/register-donor
+ * Public donor self-registration. Creates an ACTIVE user, linked ACTIVE donor,
+ * assigns Registered Donor, and starts a session immediately.
+ */
+authRoutes.post('/register-donor', async (c) => {
+  const body = await parseJsonBody(c, registerDonorBodySchema)
+  const db = getDb()
+  const ip = clientIp(c)
+  const requestId = c.get('requestId') ?? null
+
+  try {
+    const created = await withTransaction(db, async (tx) => {
+      const bloodGroupRows = await tx
+        .select({ id: bloodGroups.id })
+        .from(bloodGroups)
+        .where(eq(bloodGroups.id, body.bloodGroupId))
+        .limit(1)
+
+      if (!bloodGroupRows?.[0]?.id) {
+        throw AppError.validation('Invalid blood group', [
+          {
+            path: 'bloodGroupId',
+            message: 'Blood group does not exist',
+            code: 'invalid_blood_group',
+          },
+        ])
+      }
+
+      const roleRows = await tx
+        .select({ id: roles.id })
+        .from(roles)
+        .where(eq(roles.name, 'Registered Donor'))
+        .limit(1)
+
+      const roleId = roleRows?.[0]?.id
+      if (typeof roleId !== 'number') {
+        throw AppError.internal('Registered Donor role is not seeded')
+      }
+
+      const donorNumber = await generateUniqueDonorNumber(db)
+      const passwordHash = await hashPassword(body.password)
+
+      await tx.insert(users).values({
+        name: body.name,
+        email: body.email,
+        passwordHash,
+        facilityId: null,
+        status: 'ACTIVE',
+      })
+
+      const userRows = await tx
+        .select()
+        .from(users)
+        .where(eq(users.email, body.email))
+        .limit(1)
+      const userRow = userRows?.[0]
+      if (!userRow?.id) {
+        throw AppError.internal('Failed to load registered user')
+      }
+
+      await tx.insert(userRoles).values({ userId: userRow.id, roleId })
+
+      const insertedDonor = await tx
+        .insert(donors)
+        .values({
+          userId: userRow.id,
+          donorNumber,
+          firstName: body.firstName,
+          lastName: body.lastName,
+          phone: body.phone,
+          email: body.email,
+          bloodGroupId: body.bloodGroupId,
+          eligibilityStatus: 'UNKNOWN',
+          active: true,
+        })
+        .$returningId()
+
+      const donorId = insertedDonor?.[0]?.id
+      if (typeof donorId !== 'number') {
+        throw AppError.internal('Failed to create donor profile')
+      }
+
+      return { user: mapUserRow(userRow), donorId, donorNumber }
+    })
+
+    const ttl = sessionTtlSeconds()
+    const session = await createSession(db, {
+      userId: created.user.id,
+      ipAddress: ip,
+      userAgent: c.req.header('user-agent') ?? null,
+      ttlSeconds: ttl,
+    })
+
+    setSessionCookie(c, session.id, { maxAgeSeconds: ttl })
+
+    await recordAuthAuditEvent('register_donor', {
+      actorUserId: created.user.id,
+      requestId,
+      ipAddress: ip,
+    })
+    await recordActivity({
+      actorUserId: created.user.id,
+      action: DonorAuditActions.CREATE,
+      entityType: 'donor',
+      entityId: created.donorId,
+      metadata: {
+        donorNumber: created.donorNumber,
+        selfRegistered: true,
+      },
+      requestId,
+      ipAddress: ip,
+    })
+
+    const publicUser = toPublicUser(created.user)
+    if (!publicUser) {
+      throw AppError.internal('Failed to serialize user')
+    }
+
+    return jsonOk(
+      c,
+      {
+        user: publicUser,
+        roles: ['Registered Donor'],
+        permissions: [],
+      },
+      201,
+    )
+  } catch (error) {
+    if (AppError.isAppError(error)) {
+      throw error
+    }
+    if (isDuplicateEntryError(error)) {
+      throw AppError.conflict('Email or phone is already registered', [
+        {
+          path: 'email',
+          message: 'Email or phone is already registered',
+          code: 'duplicate_registration',
+        },
+      ])
+    }
+    throw error
+  }
 })
 
 /**

@@ -21,6 +21,7 @@ import { parseJsonBody, parseParams, parseQuery } from '../../lib/validate'
 import { requireAuth } from '../../middleware/require-auth'
 import { requirePermission } from '../../middleware/require-permission'
 import { DonationAuditActions, recordActivity } from '../../services/audit'
+import { requireHospitalFacilityId } from '../auth/access-scope'
 import {
   createDonationBodySchema,
   donationIdParamSchema,
@@ -59,7 +60,11 @@ donationRoutes.use('*', requireAuth)
  */
 donationRoutes.get('/', requirePermission('donations:read'), async (c) => {
   const query = parseQuery(c, listDonationsQuerySchema)
-  const result = await listDonations(getDb(), query)
+  const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+  const result = await listDonations(
+    getDb(),
+    typeof facilityId === 'number' ? { ...query, facilityId } : query,
+  )
 
   return jsonOk(c, {
     donations: result.items,
@@ -82,8 +87,13 @@ donationRoutes.post('/', requirePermission('donations:create'), async (c) => {
     throw AppError.unauthorized('Authenticated user required')
   }
   const actorId = actor.id
+  const facilityId = requireHospitalFacilityId(actor, c.get('roles'))
 
-  const donation = await createDonation(getDb(), body, actorId)
+  const donation = await createDonation(
+    getDb(),
+    typeof facilityId === 'number' ? { ...body, facilityId } : body,
+    actorId,
+  )
 
   await recordActivity({
     actorUserId: actorId,
@@ -113,7 +123,12 @@ donationRoutes.post('/', requirePermission('donations:create'), async (c) => {
  */
 donationRoutes.get('/:id', requirePermission('donations:read'), async (c) => {
   const { id } = parseParams(c, donationIdParamSchema)
-  const donation = await getDonationById(getDb(), id)
+  const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+  const donation = await getDonationById(
+    getDb(),
+    id,
+    typeof facilityId === 'number' ? { facilityId } : {},
+  )
   return jsonOk(c, { donation })
 })
 
@@ -128,6 +143,10 @@ donationRoutes.patch(
     const { id } = parseParams(c, donationIdParamSchema)
     const body = await parseJsonBody(c, updateDonationBodySchema)
     const actor = c.get('user')
+    const facilityId = requireHospitalFacilityId(actor, c.get('roles'))
+    if (typeof facilityId === 'number') {
+      await getDonationById(getDb(), id, { facilityId })
+    }
     const donation = await updateDonation(getDb(), id, body)
 
     await recordActivity({

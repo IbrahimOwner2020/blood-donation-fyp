@@ -35,6 +35,19 @@ def test_forecast_returns_requested_horizon_and_numeric_units(
         assert isinstance(point["units"], (int, float))
 
 
+def test_forecast_returns_60_daily_prediction_points(model_dir: Path) -> None:
+    payload = {
+        "blood_group": "O+",
+        "horizon_days": 60,
+        "history": make_history(75),
+    }
+    response = client.post("/forecast", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["horizon_days"] == 60
+    assert len(body["predictions"]) == 60
+
+
 def test_forecast_insufficient_history_error_shape(model_dir: Path) -> None:
     payload = {
         "blood_group": "A+",

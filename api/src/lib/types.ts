@@ -9,6 +9,7 @@ export type AuthUser = {
     id: number
     name: string
     email: string
+    facilityId: number | null
     status: UserStatus
     createdAt: Date
     updatedAt: Date

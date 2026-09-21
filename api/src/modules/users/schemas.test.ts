@@ -64,15 +64,17 @@ describe('users schemas', () => {
     const parsed = createRoleBodySchema.parse({
       name: '  Analyst ',
       description: '  ',
+      permissionCodes: ['donors:read', 'reports:read'],
     })
     expect(parsed.name).toBe('Analyst')
     expect(parsed.description).toBeNull()
+    expect(parsed.permissionCodes).toEqual(['donors:read', 'reports:read'])
   })
 
   test('updateRoleBodySchema requires at least one field', () => {
     expect(updateRoleBodySchema.safeParse({}).success).toBe(false)
     expect(
-      updateRoleBodySchema.safeParse({ description: 'Updated' }).success,
+      updateRoleBodySchema.safeParse({ permissionCodes: [] }).success,
     ).toBe(true)
   })
 

@@ -72,7 +72,8 @@ Primary target:
 Default horizons:
 - 7 days;
 - 14 days;
-- 30 days.
+- 30 days;
+- 60 days for daily supply analysis.
 
 ## Candidate Models
 

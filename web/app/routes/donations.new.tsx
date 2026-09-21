@@ -97,8 +97,11 @@ export async function clientLoader({
   );
 
   try {
+    const canListDonors = hasUiPermission(session, UI_PERMISSIONS.donorsRead);
     const [donorsResult, centres, facilities] = await Promise.all([
-      listDonors({ active: true, limit: 100, offset: 0 }),
+      canListDonors
+        ? listDonors({ active: true, limit: 100, offset: 0 })
+        : Promise.resolve({ donors: [] as PublicDonor[] }),
       listDonationCentres({ active: true }),
       listFacilities({ active: true }).catch(() => [] as PublicFacility[]),
     ]);
@@ -106,7 +109,26 @@ export async function clientLoader({
     return {
       status: "ok",
       session,
-      donors: donorsResult.donors ?? [],
+      donors:
+        donorsResult.donors?.length || !Number.isFinite(donorPrefill)
+          ? (donorsResult.donors ?? [])
+          : [
+              {
+                id: donorPrefill,
+                userId: null,
+                donorNumber: "",
+                firstName: "Selected",
+                lastName: "donor",
+                phone: null,
+                email: null,
+                bloodGroupId: Number.isFinite(bloodGroupPrefill)
+                  ? bloodGroupPrefill
+                  : 0,
+                bloodGroup: null,
+                eligibilityStatus: "UNKNOWN",
+                active: true,
+              } satisfies PublicDonor,
+            ],
       centres: centres ?? [],
       facilities: facilities ?? [],
       defaultDate: todayDateOnly(),

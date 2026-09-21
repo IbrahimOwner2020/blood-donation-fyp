@@ -8,6 +8,7 @@ import {
 } from 'drizzle-orm/mysql-core'
 
 import { userStatuses } from './enums'
+import { healthcareFacilities } from './healthcare-facilities'
 
 /**
  * Application users. Soft-deactivate via status=INACTIVE (docs/06).
@@ -20,6 +21,7 @@ export const users = mysqlTable(
     name: varchar('name', { length: 255 }).notNull(),
     email: varchar('email', { length: 255 }).notNull().unique(),
     passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    facilityId: int('facility_id').references(() => healthcareFacilities.id),
     status: mysqlEnum('status', userStatuses).notNull().default('ACTIVE'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),

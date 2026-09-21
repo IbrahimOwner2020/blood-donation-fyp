@@ -29,6 +29,8 @@ const envSchema = z.object({
     AI_SERVICE_URL: z.string().url().default('http://localhost:8000'),
     /** Internal URL AI-service can use to call API-owned assistant tools. */
     API_INTERNAL_BASE_URL: z.string().url().optional(),
+    /** Shared secret for server-to-server daily AI analysis cron calls. */
+    AI_ANALYSIS_CRON_SECRET: z.string().optional().default(''),
     /** Default / forecast / models timeout (~30s per docs/14). */
     AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
     /** Training may run longer than forecast; keep separate from request timeout. */

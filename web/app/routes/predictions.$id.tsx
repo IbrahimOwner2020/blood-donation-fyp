@@ -13,6 +13,10 @@ import { LoadingState } from "~/components/ui/LoadingState";
 import { PageHeader } from "~/components/ui/PageHeader";
 import { ApiRequestError } from "~/lib/api";
 import {
+  listAiAnalysisReports,
+  type PublicAiAnalysisRun,
+} from "~/lib/ai-analysis";
+import {
   UI_PERMISSIONS,
   fetchAuthSession,
   hasUiPermission,
@@ -41,6 +45,7 @@ type PredictionDetailLoaderData =
       status: "ok";
       session: AuthSession;
       prediction: PublicPrediction;
+      aiReports: PublicAiAnalysisRun[];
     }
   | {
       status: "forbidden";
@@ -95,8 +100,20 @@ export async function clientLoader({
   }
 
   try {
-    const prediction = await getPrediction(predictionId);
-    return { status: "ok", session, prediction };
+    const [prediction, aiReportList] = await Promise.all([
+      getPrediction(predictionId),
+      hasUiPermission(session, UI_PERMISSIONS.reportsRead)
+        ? listAiAnalysisReports({ limit: 25 }).catch(() => ({ reports: [] }))
+        : Promise.resolve({ reports: [] }),
+    ]);
+    return {
+      status: "ok",
+      session,
+      prediction,
+      aiReports: aiReportList.reports.filter((report) =>
+        report.predictionIds.includes(predictionId),
+      ),
+    };
   } catch (error) {
     if (isForbiddenApiError(error)) {
       return {
@@ -223,6 +240,7 @@ export default function PredictionDetailPage() {
 
   const series = prediction.series ?? [];
   const metrics = prediction.metrics;
+  const aiReports = loaderData.aiReports ?? [];
 
   return (
     <div>
@@ -332,6 +350,33 @@ export default function PredictionDetailPage() {
           </div>
         ) : null}
       </dl>
+
+      <section className="mb-8">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-nbts-muted">
+          AI report
+        </h2>
+        {aiReports.length === 0 ? (
+          <EmptyState
+            title="No AI report linked"
+            description="Daily AI analysis conclusions will appear here when a report includes this prediction."
+          />
+        ) : (
+          <div className="rounded-lg border border-nbts-border bg-nbts-panel p-4">
+            {aiReports.slice(0, 3).map((report) => (
+              <div key={report.id} className="border-b border-nbts-border py-3 first:pt-0 last:border-0 last:pb-0">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
+                  <Link className="font-semibold text-nbts-blood underline" to={`/ai-reports/${report.id}`}>
+                    AI report #{report.id}
+                  </Link>
+                  <span className="text-nbts-muted">{report.status}</span>
+                  <span className="text-nbts-muted">Risk {report.riskLevel}</span>
+                </div>
+                <p className="text-sm leading-6 text-nbts-ink">{report.conclusion}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section>
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-nbts-muted">

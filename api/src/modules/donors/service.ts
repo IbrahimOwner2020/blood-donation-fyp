@@ -35,6 +35,7 @@ type DonorWithBloodGroup = {
 function mapDonorRow(row: typeof donors.$inferSelect): DonorRow {
   return {
     id: row.id,
+    userId: row.userId ?? null,
     donorNumber: row.donorNumber,
     firstName: row.firstName,
     lastName: row.lastName,
@@ -342,6 +343,31 @@ export async function getDonorById(
     throw AppError.notFound('Donor not found')
   }
   return toPublicOrThrow(loaded)
+}
+
+export async function getDonorByUserId(
+  db: Db,
+  userId: number,
+): Promise<PublicDonor> {
+  const rows = await db
+    .select({
+      donor: donors,
+      bloodGroup: bloodGroups,
+    })
+    .from(donors)
+    .leftJoin(bloodGroups, eq(donors.bloodGroupId, bloodGroups.id))
+    .where(eq(donors.userId, userId))
+    .limit(1)
+
+  const row = rows?.[0]
+  if (!row?.donor?.id) {
+    throw AppError.notFound('Donor profile not found')
+  }
+
+  return toPublicOrThrow({
+    donor: mapDonorRow(row.donor),
+    bloodGroup: mapBloodGroupRow(row.bloodGroup),
+  })
 }
 
 export async function createDonor(

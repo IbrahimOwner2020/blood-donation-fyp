@@ -1,27 +1,60 @@
 import { NavLink } from "react-router";
+import { UI_PERMISSIONS, hasUiPermission, type AuthSession } from "~/lib/auth";
 
 type NavItem = {
   to: string;
   label: string;
   end?: boolean;
+  permission?: string;
+  anyPermission?: string[];
+  role?: string;
 };
 
 const PRIMARY_NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", end: true },
-  { to: "/donors", label: "Donors" },
-  { to: "/donations", label: "Donations" },
-  { to: "/inventory", label: "Inventory" },
-  { to: "/blood-requests", label: "Requests" },
-  { to: "/predictions", label: "Forecasts" },
-  { to: "/alerts", label: "Alerts" },
-  { to: "/notifications", label: "Notify" },
-  { to: "/reports", label: "Reports" },
+  { to: "/my-donor-profile", label: "My donor profile", role: "Registered Donor" },
+  {
+    to: "/donors",
+    label: "Donors",
+    anyPermission: [UI_PERMISSIONS.donorsRead, UI_PERMISSIONS.donorsCreate],
+  },
+  { to: "/donations", label: "Donations", permission: UI_PERMISSIONS.donationsRead },
+  { to: "/inventory", label: "Inventory", permission: UI_PERMISSIONS.inventoryRead },
+  { to: "/blood-requests", label: "Requests", permission: UI_PERMISSIONS.requestsRead },
+  { to: "/predictions", label: "Forecasts", permission: UI_PERMISSIONS.predictionsRead },
+  { to: "/ai-reports", label: "AI Reports", permission: UI_PERMISSIONS.predictionsRead },
+  { to: "/alerts", label: "Alerts", permission: UI_PERMISSIONS.alertsRead },
+  { to: "/notifications", label: "Notify", permission: UI_PERMISSIONS.notificationsRead },
+  { to: "/reports", label: "Reports", permission: UI_PERMISSIONS.reportsRead },
 ];
 
 const ADMIN_NAV: NavItem[] = [
-  { to: "/admin/users", label: "Users" },
-  { to: "/admin/roles", label: "Roles" },
-  { to: "/admin/activity", label: "Activity" },
+  {
+    to: "/admin/users",
+    label: "Users",
+    anyPermission: [
+      UI_PERMISSIONS.usersManage,
+      UI_PERMISSIONS.usersManageFacility,
+    ],
+  },
+  {
+    to: "/admin/facilities",
+    label: "Facilities",
+    anyPermission: [
+      UI_PERMISSIONS.facilitiesRead,
+      UI_PERMISSIONS.facilitiesCreate,
+      UI_PERMISSIONS.facilitiesUpdate,
+    ],
+  },
+  {
+    to: "/admin/roles",
+    label: "Roles",
+    anyPermission: [
+      UI_PERMISSIONS.rolesManage,
+      UI_PERMISSIONS.rolesAssignFacility,
+    ],
+  },
+  { to: "/admin/activity", label: "Activity", permission: UI_PERMISSIONS.activityRead },
 ];
 
 function navClassName({ isActive }: { isActive: boolean }): string {
@@ -34,11 +67,30 @@ function navClassName({ isActive }: { isActive: boolean }): string {
 }
 
 type SidebarProps = {
+  session: AuthSession;
   open?: boolean;
   onClose?: () => void;
 };
 
-export function Sidebar({ open = false, onClose }: SidebarProps) {
+function canShowNavItem(session: AuthSession, item: NavItem): boolean {
+  if (item.role) {
+    return (session.roleLabels ?? []).includes(item.role);
+  }
+  if (item.permission) {
+    return hasUiPermission(session, item.permission);
+  }
+  if (item.anyPermission?.length) {
+    return item.anyPermission.some((permission) =>
+      hasUiPermission(session, permission),
+    );
+  }
+  return true;
+}
+
+export function Sidebar({ session, open = false, onClose }: SidebarProps) {
+  const primaryItems = PRIMARY_NAV.filter((item) => canShowNavItem(session, item));
+  const adminItems = ADMIN_NAV.filter((item) => canShowNavItem(session, item));
+
   return (
     <>
       {open ? (
@@ -70,7 +122,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3"
           aria-label="Main"
         >
-          {PRIMARY_NAV.map((item) => (
+          {primaryItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -82,19 +134,23 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             </NavLink>
           ))}
 
-          <p className="mt-4 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Admin
-          </p>
-          {ADMIN_NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={navClassName}
-              onClick={onClose}
-            >
-              {item.label}
-            </NavLink>
-          ))}
+          {adminItems.length > 0 ? (
+            <>
+              <p className="mt-4 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Admin
+              </p>
+              {adminItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={navClassName}
+                  onClick={onClose}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </>
+          ) : null}
         </nav>
         <p className="shrink-0 border-t border-white/10 px-3 py-3 text-[11px] text-slate-400">
           Presentation shell - API is authority

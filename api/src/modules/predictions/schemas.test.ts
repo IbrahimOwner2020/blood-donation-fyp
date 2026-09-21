@@ -50,6 +50,14 @@ describe('runPredictionBodySchema', () => {
     expect(parsed.history?.[0]?.demand_units).toBe(8)
   })
 
+  test('accepts 60-day horizon for daily AI analysis', () => {
+    const parsed = runPredictionBodySchema.parse({
+      bloodGroup: 'O+',
+      horizonDays: 60,
+    })
+    expect(parsed.horizonDays).toBe(60)
+  })
+
   test('accepts preferredModel llm and coerces null to undefined', () => {
     const withLlm = runPredictionBodySchema.parse({
       bloodGroup: 'O+',

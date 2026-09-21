@@ -11,9 +11,11 @@ import {
 export default [
     index("routes/home.tsx"),
     route("login", "routes/login.tsx"),
+    route("register-donor", "routes/register-donor.tsx"),
     route("logout", "routes/logout.tsx"),
     layout("routes/app-layout.tsx", [
         route("dashboard", "routes/dashboard.tsx"),
+        route("my-donor-profile", "routes/my-donor-profile.tsx"),
 
         route("donors", "routes/donors._index.tsx"),
         route("donors/new", "routes/donors.new.tsx"),
@@ -33,6 +35,8 @@ export default [
 
         route("predictions", "routes/predictions._index.tsx"),
         route("predictions/:id", "routes/predictions.$id.tsx"),
+        route("ai-reports", "routes/ai-reports._index.tsx"),
+        route("ai-reports/:id", "routes/ai-reports.$id.tsx"),
 
         route("alerts", "routes/alerts._index.tsx"),
         route("alerts/:id", "routes/alerts.$id.tsx"),
@@ -45,6 +49,7 @@ export default [
         route("admin/users", "routes/admin.users.tsx"),
         route("admin/users/new", "routes/admin.users.new.tsx"),
         route("admin/users/:id", "routes/admin.users.$id.tsx"),
+        route("admin/facilities", "routes/admin.facilities.tsx"),
         route("admin/roles", "routes/admin.roles.tsx"),
         route("admin/activity", "routes/admin.activity.tsx"),
     ]),

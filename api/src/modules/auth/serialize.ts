@@ -8,6 +8,7 @@ export type PublicUser = {
   id: number
   name: string
   email: string
+  facilityId: number | null
   status: UserStatus
   createdAt: Date
   updatedAt: Date
@@ -18,6 +19,7 @@ export type UserRow = {
   name: string
   email: string
   passwordHash: string
+  facilityId: number | null
   status: UserStatus
   createdAt: Date
   updatedAt: Date
@@ -33,6 +35,7 @@ export function toPublicUser(user: UserRow | null | undefined): PublicUser | nul
     id: user.id,
     name: user.name,
     email: user.email,
+    facilityId: user.facilityId ?? null,
     status: user.status,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,

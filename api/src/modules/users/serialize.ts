@@ -18,12 +18,20 @@ export type RoleListItem = {
   id: number
   name: string
   description: string | null
+  permissionCodes?: string[]
+}
+
+export type PermissionListItem = {
+  id: number
+  code: string
+  description: string | null
 }
 
 export type UserRowWithoutHash = {
   id: number
   name: string
   email: string
+  facilityId: number | null
   status: UserStatus
   createdAt: Date
   updatedAt: Date
@@ -42,6 +50,7 @@ export function toAdminUser(
     id: user.id,
     name: user.name,
     email: user.email,
+    facilityId: user.facilityId ?? null,
     status: user.status,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,

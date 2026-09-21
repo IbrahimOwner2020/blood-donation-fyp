@@ -17,7 +17,7 @@ Example:
 {
   "blood_group": "O+",
   "facility_id": "facility-001",
-  "horizon_days": 7,
+  "horizon_days": 60,
   "history": [
     {"date": "2026-07-01", "demand_units": 8},
     {"date": "2026-07-02", "demand_units": 5}
@@ -30,7 +30,7 @@ Optional LLM enrichment (same response shape). **OpenAI is primary** (`LLM_PROVI
 ```json
 {
   "blood_group": "O+",
-  "horizon_days": 7,
+  "horizon_days": 60,
   "preferred_model": "llm",
   "history": [
     {"date": "2026-07-01", "demand_units": 8},
@@ -47,7 +47,7 @@ Optional LLM enrichment (same response shape). **OpenAI is primary** (`LLM_PROVI
 {
   "blood_group": "O+",
   "facility_id": "facility-001",
-  "horizon_days": 7,
+  "horizon_days": 60,
   "model": "hist_gradient_boosting",
   "model_version": "2026-09-01-01",
   "predictions": [

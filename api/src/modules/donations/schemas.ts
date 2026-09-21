@@ -142,6 +142,11 @@ export const listDonationsQuerySchema = z.object({
     .int('donationCentreId must be an integer')
     .positive('donationCentreId must be positive')
     .optional(),
+  facilityId: z.coerce
+    .number({ invalid_type_error: 'facilityId must be a number' })
+    .int('facilityId must be an integer')
+    .positive('facilityId must be positive')
+    .optional(),
   bloodGroupId: z.coerce
     .number({ invalid_type_error: 'bloodGroupId must be a number' })
     .int('bloodGroupId must be an integer')

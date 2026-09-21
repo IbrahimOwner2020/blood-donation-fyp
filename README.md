@@ -54,7 +54,9 @@ bun run db:migrate
 bun run db:seed
 ```
 
-Seed is idempotent: blood groups, roles/permissions, donation centres, **demo users** (Argon2id), healthcare facilities, and (when allowed) **demo operations** (donors, donations/inventory, blood requests, O+ demand history).
+Seed is idempotent: blood groups, the full roles/permissions catalogue, donation centres, **demo users** (Argon2id), healthcare facilities, and (when allowed) **demo operations** (donors, donations/inventory, blood requests, O+ demand history).
+
+The seeded RBAC catalogue includes System Administrator, Facility Manager, Donor Manager, Blood Collector, Blood Bank Manager, Doctor, Registered Donor, and compatibility roles. Re-run `bun run db:seed` after deploys so existing databases receive missing permissions such as `facilities:*`, `users:manage:facility`, and `roles:assign:facility`.
 
 Gating (same pattern as demo users — default on in non-production, off in production unless explicitly enabled):
 

@@ -21,6 +21,7 @@ import {
   BloodRequestAuditActions,
   recordActivity,
 } from '../../services/audit'
+import { requireHospitalFacilityId } from '../auth/access-scope'
 import {
   bloodRequestIdParamSchema,
   createBloodRequestBodySchema,
@@ -60,7 +61,11 @@ bloodRequestRoutes.get(
   requirePermission('requests:read'),
   async (c) => {
     const query = parseQuery(c, listBloodRequestsQuerySchema)
-    const result = await listBloodRequests(getDb(), query)
+    const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+    const result = await listBloodRequests(
+      getDb(),
+      typeof facilityId === 'number' ? { ...query, facilityId } : query,
+    )
     return jsonOk(c, {
       bloodRequests: result.items,
       total: result.total,
@@ -85,7 +90,12 @@ bloodRequestRoutes.post(
       // requireAuth should always set user; defensive guard for created_by FK.
       throw AppError.unauthorized('Authenticated user required')
     }
-    const bloodRequest = await createBloodRequest(getDb(), body, actor.id)
+    const facilityId = requireHospitalFacilityId(actor, c.get('roles'))
+    const bloodRequest = await createBloodRequest(
+      getDb(),
+      typeof facilityId === 'number' ? { ...body, facilityId } : body,
+      actor.id,
+    )
 
     await recordActivity({
       actorUserId: actor.id,
@@ -116,6 +126,10 @@ bloodRequestRoutes.get(
   async (c) => {
     const { id } = parseParams(c, bloodRequestIdParamSchema)
     const bloodRequest = await getBloodRequestById(getDb(), id)
+    const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+    if (typeof facilityId === 'number' && bloodRequest.facilityId !== facilityId) {
+      throw AppError.notFound('Blood request not found')
+    }
     return jsonOk(c, { bloodRequest })
   },
 )
@@ -132,6 +146,13 @@ bloodRequestRoutes.patch(
     const { id } = parseParams(c, bloodRequestIdParamSchema)
     const body = await parseJsonBody(c, patchBloodRequestBodySchema)
     const actor = c.get('user')
+    const facilityId = requireHospitalFacilityId(actor, c.get('roles'))
+    if (typeof facilityId === 'number') {
+      const existing = await getBloodRequestById(getDb(), id)
+      if (existing.facilityId !== facilityId) {
+        throw AppError.notFound('Blood request not found')
+      }
+    }
     const result = await patchBloodRequestStatus(getDb(), id, body)
 
     const statusChanged = result.previousStatus !== result.nextStatus

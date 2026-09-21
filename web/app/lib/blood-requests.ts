@@ -94,6 +94,15 @@ export type ListFacilitiesParams = {
   q?: string;
 };
 
+export type CreateFacilityInput = {
+  name: string;
+  region: string;
+  district: string;
+  active?: boolean;
+};
+
+export type PatchFacilityInput = Partial<CreateFacilityInput>;
+
 export type CreateBloodRequestInput = {
   facilityId: number;
   bloodGroupId: number;
@@ -420,6 +429,48 @@ export async function listFacilities(
   return raw
     .map(normalizeFacility)
     .filter((facility): facility is PublicFacility => facility !== null);
+}
+
+/** POST /facilities */
+export async function createFacility(
+  input: CreateFacilityInput,
+): Promise<PublicFacility> {
+  const data = await apiFetch<{ facility?: unknown }>("/facilities", {
+    method: "POST",
+    json: {
+      name: input.name.trim(),
+      region: input.region.trim(),
+      district: input.district.trim(),
+      active: input.active ?? true,
+    },
+  });
+  const facility = normalizeFacility(data?.facility);
+  if (!facility) {
+    throw new Error("Invalid facility payload from API");
+  }
+  return facility;
+}
+
+/** PATCH /facilities/:id */
+export async function patchFacility(
+  facilityId: number,
+  input: PatchFacilityInput,
+): Promise<PublicFacility> {
+  const body: Record<string, unknown> = {};
+  if (input.name !== undefined) body.name = input.name.trim();
+  if (input.region !== undefined) body.region = input.region.trim();
+  if (input.district !== undefined) body.district = input.district.trim();
+  if (input.active !== undefined) body.active = input.active;
+
+  const data = await apiFetch<{ facility?: unknown }>(
+    `/facilities/${facilityId}`,
+    { method: "PATCH", json: body },
+  );
+  const facility = normalizeFacility(data?.facility);
+  if (!facility) {
+    throw new Error("Invalid facility payload from API");
+  }
+  return facility;
 }
 
 export function allowedNextStatuses(

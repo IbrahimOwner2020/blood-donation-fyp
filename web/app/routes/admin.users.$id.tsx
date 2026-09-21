@@ -32,6 +32,7 @@ import {
   type UserStatus,
 } from "~/lib/admin";
 import { ApiRequestError } from "~/lib/api";
+import { listFacilities, type PublicFacility } from "~/lib/blood-requests";
 import {
   UI_PERMISSIONS,
   fetchAuthSession,
@@ -49,7 +50,9 @@ type UserDetailLoaderData =
       session: AuthSession;
       user: AdminUser;
       roles: RoleListItem[];
+      facilities: PublicFacility[];
       canAssignRoles: boolean;
+      isFacilityScoped: boolean;
     }
   | { status: "forbidden" }
   | { status: "not_found" }
@@ -89,23 +92,45 @@ export async function clientLoader({
     return { status: "unauthenticated" };
   }
 
-  if (!hasUiPermission(session, UI_PERMISSIONS.usersManage)) {
+  const canManageAllUsers = hasUiPermission(session, UI_PERMISSIONS.usersManage);
+  const canManageFacilityUsers = hasUiPermission(
+    session,
+    UI_PERMISSIONS.usersManageFacility,
+  );
+
+  if (!canManageAllUsers && !canManageFacilityUsers) {
     return { status: "forbidden" };
   }
 
-  const canAssignRoles = hasUiPermission(session, UI_PERMISSIONS.rolesManage);
+  const canAssignRoles =
+    hasUiPermission(session, UI_PERMISSIONS.rolesManage) ||
+    hasUiPermission(session, UI_PERMISSIONS.rolesAssignFacility);
+  const isFacilityScoped = !canManageAllUsers && canManageFacilityUsers;
 
   try {
     const user = await getAdminUser(userId);
     let roles: RoleListItem[] = [];
+    let facilities: PublicFacility[] = [];
     if (canAssignRoles) {
       try {
-        roles = await listAdminRoles();
+        [roles, facilities] = await Promise.all([
+          listAdminRoles(),
+          listFacilities({ active: true }),
+        ]);
       } catch {
         roles = [];
+        facilities = [];
       }
     }
-    return { status: "ok", session, user, roles, canAssignRoles };
+    return {
+      status: "ok",
+      session,
+      user,
+      roles,
+      facilities,
+      canAssignRoles,
+      isFacilityScoped,
+    };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 403) {
       return { status: "forbidden" };
@@ -144,7 +169,11 @@ export async function clientAction({
   }
 
   const session = await fetchAuthSession().catch(() => null);
-  if (!session || !hasUiPermission(session, UI_PERMISSIONS.usersManage)) {
+  const canManageUsers =
+    Boolean(session) &&
+    (hasUiPermission(session, UI_PERMISSIONS.usersManage) ||
+      hasUiPermission(session, UI_PERMISSIONS.usersManageFacility));
+  if (!session || !canManageUsers) {
     return data<UserDetailActionData>(
       { error: "You do not have permission to manage users." },
       { status: 403 },
@@ -164,6 +193,8 @@ export async function clientAction({
         .toUpperCase();
       const status: UserStatus =
         statusRaw === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+      const facilityRaw = String(formData.get("facilityId") || "").trim();
+      const facilityId = facilityRaw ? parsePositiveInt(facilityRaw) : NaN;
 
       if (!name || !email) {
         return data<UserDetailActionData>(
@@ -178,11 +209,18 @@ export async function clientAction({
           { status: 400 },
         );
       }
+      if (facilityRaw && !Number.isFinite(facilityId)) {
+        return data<UserDetailActionData>(
+          { error: "Facility is invalid." },
+          { status: 400 },
+        );
+      }
 
       await patchAdminUser(userId, {
         name,
         email,
         status,
+        facilityId: Number.isFinite(facilityId) ? facilityId : null,
         ...(password ? { password } : {}),
       });
       return data<UserDetailActionData>({ success: "User updated." });
@@ -196,9 +234,12 @@ export async function clientAction({
     }
 
     if (intent === "assign-roles") {
-      if (!hasUiPermission(session, UI_PERMISSIONS.rolesManage)) {
+      if (
+        !hasUiPermission(session, UI_PERMISSIONS.rolesManage) &&
+        !hasUiPermission(session, UI_PERMISSIONS.rolesAssignFacility)
+      ) {
         return data<UserDetailActionData>(
-          { error: "roles:manage is required to assign roles." },
+          { error: "Role assignment permission is required to assign roles." },
           { status: 403 },
         );
       }
@@ -256,7 +297,7 @@ export default function AdminUserDetailPage() {
         <ForbiddenState
           title="Missing permission"
           message="users:manage is required to view or edit users."
-          detail="UI gate: users:manage"
+          detail="UI gate: users:manage | users:manage:facility"
           action={
             <Link to="/admin/users" className="text-sm text-nbts-teal underline">
               Back to users
@@ -303,6 +344,13 @@ export default function AdminUserDetailPage() {
 
   const user = loaderData.user;
   const roles = loaderData.roles ?? [];
+  const facilities = loaderData.facilities ?? [];
+  const defaultFacilityId =
+    loaderData.isFacilityScoped && facilities.length > 0
+      ? String(facilities[0].id)
+      : user.facilityId
+        ? String(user.facilityId)
+        : "";
   const assignedIds = new Set(
     (user.roles ?? []).map((role) => role.id).filter((id) => Number.isFinite(id)),
   );
@@ -396,6 +444,29 @@ export default function AdminUserDetailPage() {
             </select>
           </label>
 
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-nbts-ink">Healthcare facility</span>
+            <select
+              name="facilityId"
+              defaultValue={defaultFacilityId}
+              className="rounded border border-nbts-border bg-nbts-surface px-3 py-2"
+            >
+              {loaderData.isFacilityScoped ? null : (
+                <option value="">No facility</option>
+              )}
+              {facilities.map((facility) => (
+                <option key={facility.id} value={facility.id}>
+                  {facility.name} ({facility.district}, {facility.region})
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-nbts-muted">
+              {loaderData.isFacilityScoped
+                ? "Your facility is applied by the API."
+                : "Required when assigning Hospital Staff or Facility Manager."}
+            </span>
+          </label>
+
           <button
             type="submit"
             disabled={busy}
@@ -417,8 +488,8 @@ export default function AdminUserDetailPage() {
                 Role assignment
               </h2>
               <p className="text-xs text-nbts-muted">
-                Replaces all roles for this user (PUT /users/:id/roles). Requires
-                roles:manage.
+                Replaces all roles for this user. The API limits facility
+                managers to facility-safe roles.
               </p>
               {roles.length === 0 ? (
                 <EmptyState
@@ -468,8 +539,8 @@ export default function AdminUserDetailPage() {
                   "No roles assigned."}
               </p>
               <p className="mt-3 text-xs text-nbts-muted">
-                Role editing requires roles:manage. Assignment UI is hidden; API
-                still enforces access.
+                Role editing requires role assignment permission. Assignment UI
+                is hidden; API still enforces access.
               </p>
             </div>
           )}

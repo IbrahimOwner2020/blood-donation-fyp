@@ -26,6 +26,7 @@ describe("auth session mapping (login / permission UI)", () => {
       userId: "7",
       email: "admin@nbts.local",
       displayName: "Demo Admin",
+      facilityId: null,
       roleLabels: ["Admin"],
       permissions: ["donors:create", "inventory:read"],
     });
@@ -41,6 +42,7 @@ describe("auth session mapping (login / permission UI)", () => {
       userId: "7",
       email: "admin@nbts.local",
       displayName: "Demo Admin",
+      facilityId: null,
       roleLabels: ["Admin"],
       permissions: [UI_PERMISSIONS.donorsCreate],
     };

@@ -7,14 +7,28 @@ import { and, asc, eq, inArray, like, ne, or, type SQL } from 'drizzle-orm'
 
 import type { Db, DbTransaction } from '../../db'
 import { withTransaction } from '../../db'
-import { roles, userRoles, users } from '../../db/schema'
+import {
+  healthcareFacilities,
+  permissions,
+  rolePermissions,
+  roles,
+  userRoles,
+  users,
+} from '../../db/schema'
 import type { UserStatus } from '../../db/schema/enums'
 import { AppError } from '../../lib/errors'
+import type { AuthUser } from '../../lib/types'
+import {
+  FACILITY_ASSIGNABLE_PERMISSION_CODES,
+  isFacilityAssignableRoleName,
+  requireAssignedFacilityId,
+} from '../auth/access-scope'
 import { hashPassword } from '../auth/password'
 import { revokeAllUserSessions } from '../auth/sessions'
 import type {
   AdminRoleSummary,
   AdminUser,
+  PermissionListItem,
   RoleListItem,
   UserRowWithoutHash,
 } from './serialize'
@@ -31,10 +45,66 @@ import type {
 /** Db or in-transaction client (same query surface for these helpers). */
 type DbLike = Db | DbTransaction
 
+export type UserManagementScope = {
+  actor: AuthUser | null | undefined
+  permissions: readonly string[]
+}
+
+function hasPermission(
+  granted: readonly string[] | null | undefined,
+  code: string,
+): boolean {
+  return (granted ?? []).includes(code)
+}
+
+function isGlobalUserManager(scope?: UserManagementScope): boolean {
+  return hasPermission(scope?.permissions, 'users:manage')
+}
+
+function isFacilityUserManager(scope?: UserManagementScope): boolean {
+  return hasPermission(scope?.permissions, 'users:manage:facility')
+}
+
+function canManageUsers(scope?: UserManagementScope): boolean {
+  return isGlobalUserManager(scope) || isFacilityUserManager(scope)
+}
+
+function canManageRoles(scope?: UserManagementScope): boolean {
+  return hasPermission(scope?.permissions, 'roles:manage')
+}
+
+function canAssignFacilityRoles(scope?: UserManagementScope): boolean {
+  return hasPermission(scope?.permissions, 'roles:assign:facility')
+}
+
+function scopedFacilityId(scope?: UserManagementScope): number | undefined {
+  if (!scope || isGlobalUserManager(scope)) {
+    return undefined
+  }
+  if (!isFacilityUserManager(scope)) {
+    throw AppError.forbidden('Insufficient permissions')
+  }
+  return requireAssignedFacilityId(scope.actor)
+}
+
+function assertFacilityScopedUserTarget(
+  scope: UserManagementScope | undefined,
+  facilityId: number | null | undefined,
+): void {
+  const requiredFacilityId = scopedFacilityId(scope)
+  if (requiredFacilityId === undefined) {
+    return
+  }
+  if (facilityId !== requiredFacilityId) {
+    throw AppError.forbidden('Facility managers can only manage users in their assigned facility')
+  }
+}
+
 const USER_SELECT = {
   id: users.id,
   name: users.name,
   email: users.email,
+  facilityId: users.facilityId,
   status: users.status,
   createdAt: users.createdAt,
   updatedAt: users.updatedAt,
@@ -45,6 +115,7 @@ function mapUserRow(
     id: number
     name: string
     email: string
+    facilityId: number | null
     status: UserStatus
     createdAt: Date
     updatedAt: Date
@@ -57,6 +128,7 @@ function mapUserRow(
     id: row.id,
     name: row.name,
     email: row.email,
+    facilityId: row.facilityId ?? null,
     status: row.status,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -143,6 +215,178 @@ async function assertRolesExist(db: DbLike, roleIds: number[]): Promise<void> {
   }
 }
 
+async function roleNamesForIds(
+  db: DbLike,
+  roleIds: number[],
+): Promise<string[]> {
+  const uniqueIds = [...new Set((roleIds ?? []).filter((id) => id > 0))]
+  if (uniqueIds.length === 0) {
+    return []
+  }
+  const rows = await db
+    .select({ name: roles.name })
+    .from(roles)
+    .where(inArray(roles.id, uniqueIds))
+  return (rows ?? [])
+    .map((row) => row?.name?.trim())
+    .filter((name): name is string => Boolean(name))
+}
+
+async function permissionCodesForRoleIds(
+  db: DbLike,
+  roleIds: number[],
+): Promise<Map<number, string[]>> {
+  const uniqueIds = [...new Set((roleIds ?? []).filter((id) => id > 0))]
+  const map = new Map<number, string[]>()
+  if (uniqueIds.length === 0) {
+    return map
+  }
+
+  const rows = await db
+    .select({
+      roleId: rolePermissions.roleId,
+      code: permissions.code,
+    })
+    .from(rolePermissions)
+    .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+    .where(inArray(rolePermissions.roleId, uniqueIds))
+
+  for (const row of rows ?? []) {
+    if (typeof row?.roleId !== 'number' || !row?.code) {
+      continue
+    }
+    const list = map.get(row.roleId) ?? []
+    list.push(row.code)
+    map.set(row.roleId, list)
+  }
+  return map
+}
+
+async function assertFacilityAssignableRoles(
+  db: DbLike,
+  roleIds: number[],
+): Promise<void> {
+  const uniqueIds = [...new Set((roleIds ?? []).filter((id) => id > 0))]
+  if (uniqueIds.length === 0) {
+    return
+  }
+
+  const roleRows = await db
+    .select({ id: roles.id, name: roles.name })
+    .from(roles)
+    .where(inArray(roles.id, uniqueIds))
+  const permissionMap = await permissionCodesForRoleIds(db, uniqueIds)
+  const allowed = new Set<string>(FACILITY_ASSIGNABLE_PERMISSION_CODES)
+
+  for (const role of roleRows ?? []) {
+    if (!isFacilityAssignableRoleName(role.name)) {
+      throw AppError.forbidden('Facility managers cannot assign system-level roles')
+    }
+    const codes = permissionMap.get(role.id) ?? []
+    const unsafe = codes.filter((code) => !allowed.has(code))
+    if (unsafe.length > 0) {
+      throw AppError.forbidden(
+        `Role "${role.name}" includes permissions outside the facility-safe set`,
+      )
+    }
+  }
+}
+
+async function replaceRolePermissions(
+  db: DbLike,
+  roleId: number,
+  permissionCodes: readonly string[],
+): Promise<void> {
+  const uniqueCodes = [...new Set((permissionCodes ?? []).filter(Boolean))]
+  const rows =
+    uniqueCodes.length === 0
+      ? []
+      : await db
+          .select({ id: permissions.id, code: permissions.code })
+          .from(permissions)
+          .where(inArray(permissions.code, uniqueCodes))
+
+  const foundCodes = new Set((rows ?? []).map((row) => row.code))
+  const missing = uniqueCodes.filter((code) => !foundCodes.has(code))
+  if (missing.length > 0) {
+    throw AppError.badRequest('One or more permission codes are invalid', [
+      {
+        path: 'permissionCodes',
+        message: `Unknown permission code(s): ${missing.join(', ')}`,
+      },
+    ])
+  }
+
+  await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId))
+
+  if (uniqueCodes.length === 0) {
+    return
+  }
+
+  await db.insert(rolePermissions).values(
+    rows.map((row) => ({
+      roleId,
+      permissionId: row.id,
+    })),
+  )
+}
+
+async function assertActiveFacility(
+  db: DbLike,
+  facilityId: number | null | undefined,
+): Promise<number | null> {
+  if (facilityId === null || facilityId === undefined) {
+    return null
+  }
+
+  const rows = await db
+    .select({ id: healthcareFacilities.id, active: healthcareFacilities.active })
+    .from(healthcareFacilities)
+    .where(eq(healthcareFacilities.id, facilityId))
+    .limit(1)
+
+  const facility = rows?.[0]
+  if (!facility?.id) {
+    throw AppError.validation('Invalid facility', [
+      {
+        path: 'facilityId',
+        message: 'Facility does not exist',
+        code: 'invalid_facility',
+      },
+    ])
+  }
+  if (!facility.active) {
+    throw AppError.validation('Facility is inactive', [
+      {
+        path: 'facilityId',
+        message: 'Facility must be active for hospital staff accounts',
+        code: 'inactive_facility',
+      },
+    ])
+  }
+  return facility.id
+}
+
+async function assertHospitalFacilityRequirement(
+  db: DbLike,
+  roleIds: number[],
+  facilityId: number | null | undefined,
+): Promise<void> {
+  const roleNames = await roleNamesForIds(db, roleIds)
+  const facilityRequiredRole = roleNames.find((name) =>
+    ['Hospital Staff', 'Facility Manager'].includes(name),
+  )
+  if (facilityRequiredRole && !facilityId) {
+    throw AppError.validation('Facility is required for this role', [
+      {
+        path: 'facilityId',
+        message: `Facility is required when assigning ${facilityRequiredRole}`,
+        code: 'hospital_facility_required',
+      },
+    ])
+  }
+}
+
 async function replaceUserRoles(
   db: DbLike,
   userId: number,
@@ -169,8 +413,17 @@ async function replaceUserRoles(
 export async function listUsers(
   db: Db,
   query: ListUsersQuery = {},
+  scope?: UserManagementScope,
 ): Promise<AdminUser[]> {
+  if (scope && !canManageUsers(scope)) {
+    throw AppError.forbidden('Insufficient permissions')
+  }
   const conditions: SQL[] = []
+  const facilityId = scopedFacilityId(scope)
+
+  if (typeof facilityId === 'number') {
+    conditions.push(eq(users.facilityId, facilityId))
+  }
 
   if (query.status) {
     conditions.push(eq(users.status, query.status))
@@ -215,7 +468,11 @@ export async function listUsers(
 export async function getUserById(
   db: Db,
   userId: number,
+  scope?: UserManagementScope,
 ): Promise<AdminUser | null> {
+  if (scope && !canManageUsers(scope)) {
+    throw AppError.forbidden('Insufficient permissions')
+  }
   if (!Number.isFinite(userId) || userId <= 0) {
     return null
   }
@@ -230,6 +487,7 @@ export async function getUserById(
   if (!user) {
     return null
   }
+  assertFacilityScopedUserTarget(scope, user.facilityId)
 
   const roleMap = await loadRolesForUserIds(db, [user.id])
   return toAdminUser(user, roleMap.get(user.id) ?? [])
@@ -238,15 +496,33 @@ export async function getUserById(
 export async function createUser(
   db: Db,
   body: CreateUserBody,
-  options: { assignRoles: boolean } = { assignRoles: false },
+  options: {
+    assignRoles: boolean
+    scope?: UserManagementScope
+  } = { assignRoles: false },
 ): Promise<AdminUser> {
+  if (options.scope && !canManageUsers(options.scope)) {
+    throw AppError.forbidden('Insufficient permissions')
+  }
   const email = body.email
   const passwordHash = await hashPassword(body.password)
   const status = body.status ?? 'ACTIVE'
   const roleIds = options.assignRoles ? (body.roleIds ?? []) : []
+  const actorFacilityId = scopedFacilityId(options.scope)
+  const requestedFacilityId =
+    typeof actorFacilityId === 'number' ? actorFacilityId : body.facilityId
+  const facilityId = await assertActiveFacility(db, requestedFacilityId)
+  assertFacilityScopedUserTarget(options.scope, facilityId)
 
   if (roleIds.length > 0) {
     await assertRolesExist(db, roleIds)
+    await assertHospitalFacilityRequirement(db, roleIds, facilityId)
+    if (options.scope && !canManageRoles(options.scope)) {
+      if (!canAssignFacilityRoles(options.scope)) {
+        throw AppError.forbidden('roles:manage or roles:assign:facility is required to assign roles')
+      }
+      await assertFacilityAssignableRoles(db, roleIds)
+    }
   }
 
   try {
@@ -255,6 +531,7 @@ export async function createUser(
         name: body.name,
         email,
         passwordHash,
+        facilityId,
         status,
       })
 
@@ -298,8 +575,12 @@ export async function patchUser(
   db: Db,
   userId: number,
   body: PatchUserBody,
+  scope?: UserManagementScope,
 ): Promise<AdminUser> {
-  const existing = await getUserById(db, userId)
+  if (scope && !canManageUsers(scope)) {
+    throw AppError.forbidden('Insufficient permissions')
+  }
+  const existing = await getUserById(db, userId, scope)
   if (!existing) {
     throw AppError.notFound('User not found')
   }
@@ -309,6 +590,7 @@ export async function patchUser(
     email?: string
     passwordHash?: string
     status?: UserStatus
+    facilityId?: number | null
   } = {}
 
   if (body.name !== undefined) {
@@ -319,6 +601,31 @@ export async function patchUser(
   }
   if (body.status !== undefined) {
     updates.status = body.status
+  }
+  if (body.facilityId !== undefined) {
+    const actorFacilityId = scopedFacilityId(scope)
+    const requestedFacilityId =
+      typeof actorFacilityId === 'number' ? actorFacilityId : body.facilityId
+    updates.facilityId = await assertActiveFacility(db, requestedFacilityId)
+    assertFacilityScopedUserTarget(scope, updates.facilityId)
+    if (updates.facilityId === null) {
+      const roleMap = await loadRolesForUserIds(db, [userId])
+      const currentRoles = roleMap.get(userId) ?? []
+      if (
+        currentRoles.some((role) =>
+          ['Hospital Staff', 'Facility Manager'].includes(role.name),
+        )
+      ) {
+        throw AppError.validation('Facility is required for hospital staff', [
+          {
+            path: 'facilityId',
+            message:
+              'Remove facility-scoped roles before clearing the facility',
+            code: 'hospital_facility_required',
+          },
+        ])
+      }
+    }
   }
 
   let revokeSessions = false
@@ -349,7 +656,7 @@ export async function patchUser(
     await revokeAllUserSessions(db, userId)
   }
 
-  const updated = await getUserById(db, userId)
+  const updated = await getUserById(db, userId, scope)
   if (!updated) {
     throw AppError.notFound('User not found')
   }
@@ -363,32 +670,54 @@ export async function patchUser(
 export async function softDeactivateUser(
   db: Db,
   userId: number,
+  scope?: UserManagementScope,
 ): Promise<AdminUser> {
-  return patchUser(db, userId, { status: 'INACTIVE' })
+  return patchUser(db, userId, { status: 'INACTIVE' }, scope)
 }
 
 export async function assignUserRoles(
   db: Db,
   userId: number,
   body: AssignUserRolesBody,
+  scope?: UserManagementScope,
 ): Promise<AdminUser> {
-  const existing = await getUserById(db, userId)
+  if (scope && !canManageRoles(scope) && !canAssignFacilityRoles(scope)) {
+    throw AppError.forbidden('Insufficient permissions')
+  }
+  if (scope && !canManageRoles(scope) && !canManageUsers(scope)) {
+    throw AppError.forbidden('Insufficient permissions')
+  }
+  const userScope = scope && canManageUsers(scope) ? scope : undefined
+  const existing = await getUserById(db, userId, userScope)
   if (!existing) {
     throw AppError.notFound('User not found')
+  }
+  assertFacilityScopedUserTarget(userScope, existing.facilityId)
+
+  await assertHospitalFacilityRequirement(
+    db,
+    body.roleIds ?? [],
+    existing.facilityId,
+  )
+  if (scope && !canManageRoles(scope)) {
+    await assertFacilityAssignableRoles(db, body.roleIds ?? [])
   }
 
   await withTransaction(db, async (tx) => {
     await replaceUserRoles(tx, userId, body.roleIds ?? [])
   })
 
-  const updated = await getUserById(db, userId)
+  const updated = await getUserById(db, userId, userScope)
   if (!updated) {
     throw AppError.notFound('User not found')
   }
   return updated
 }
 
-export async function listRoles(db: Db): Promise<RoleListItem[]> {
+export async function listRoles(
+  db: Db,
+  scope?: UserManagementScope,
+): Promise<RoleListItem[]> {
   const rows = await db
     .select({
       id: roles.id,
@@ -398,10 +727,34 @@ export async function listRoles(db: Db): Promise<RoleListItem[]> {
     .from(roles)
     .orderBy(asc(roles.name), asc(roles.id))
 
-  return (rows ?? []).map((row) => ({
+  const roleItems = (rows ?? []).map((row) => ({
     id: row.id,
     name: row.name,
     description: row.description ?? null,
+    permissionCodes: [] as string[],
+  }))
+  const permissionMap = await permissionCodesForRoleIds(
+    db,
+    roleItems.map((role) => role.id),
+  )
+
+  if (scope && !canManageRoles(scope) && canAssignFacilityRoles(scope)) {
+    const allowed = new Set<string>(FACILITY_ASSIGNABLE_PERMISSION_CODES)
+    return roleItems.filter((role) => {
+      if (!isFacilityAssignableRoleName(role.name)) {
+        return false
+      }
+      const codes = permissionMap.get(role.id) ?? []
+      return codes.every((code) => allowed.has(code))
+    }).map((role) => ({
+      ...role,
+      permissionCodes: [...(permissionMap.get(role.id) ?? [])].sort(),
+    }))
+  }
+
+  return roleItems.map((role) => ({
+    ...role,
+    permissionCodes: [...(permissionMap.get(role.id) ?? [])].sort(),
   }))
 }
 
@@ -429,6 +782,35 @@ export async function getRoleById(
     name: row.name,
     description: row.description ?? null,
   }
+}
+
+export async function getRoleWithPermissions(
+  db: Db,
+  roleId: number,
+): Promise<RoleListItem> {
+  const role = await getRoleById(db, roleId)
+  const permissionMap = await permissionCodesForRoleIds(db, [role.id])
+  return {
+    ...role,
+    permissionCodes: [...(permissionMap.get(role.id) ?? [])].sort(),
+  }
+}
+
+export async function listPermissions(db: Db): Promise<PermissionListItem[]> {
+  const rows = await db
+    .select({
+      id: permissions.id,
+      code: permissions.code,
+      description: permissions.description,
+    })
+    .from(permissions)
+    .orderBy(asc(permissions.code), asc(permissions.id))
+
+  return (rows ?? []).map((row) => ({
+    id: row.id,
+    code: row.code,
+    description: row.description ?? null,
+  }))
 }
 
 async function assertUniqueRoleName(
@@ -459,8 +841,7 @@ async function assertUniqueRoleName(
 }
 
 /**
- * Create a role row (name + optional description).
- * Permission mappings remain seed/admin tooling — docs/04 POST /roles.
+ * Create a role row (name + optional description + optional permissions).
  */
 export async function createRole(
   db: Db,
@@ -477,20 +858,28 @@ export async function createRole(
   await assertUniqueRoleName(db, name)
 
   try {
-    const inserted = await db
-      .insert(roles)
-      .values({
-        name,
-        description,
-      })
-      .$returningId()
+    const created = await withTransaction(db, async (tx) => {
+      const inserted = await tx
+        .insert(roles)
+        .values({
+          name,
+          description,
+        })
+        .$returningId()
 
-    const insertId = inserted?.[0]?.id
-    if (typeof insertId !== 'number' || !Number.isFinite(insertId)) {
-      throw AppError.internal('Failed to create role')
-    }
+      const insertId = inserted?.[0]?.id
+      if (typeof insertId !== 'number' || !Number.isFinite(insertId)) {
+        throw AppError.internal('Failed to create role')
+      }
 
-    return getRoleById(db, insertId)
+      if (body.permissionCodes !== undefined) {
+        await replaceRolePermissions(tx, insertId, body.permissionCodes)
+      }
+
+      return insertId
+    })
+
+    return getRoleWithPermissions(db, created)
   } catch (error) {
     if (isDuplicateEmailError(error)) {
       throw AppError.conflict('Role name already exists', [
@@ -506,7 +895,7 @@ export async function createRole(
 }
 
 /**
- * Update role name and/or description (docs/04 PATCH /roles/:id).
+ * Update role name, description, and/or permission mapping.
  */
 export async function updateRole(
   db: Db,
@@ -527,12 +916,19 @@ export async function updateRole(
       body.description === null ? null : body.description.trim() || null
   }
 
-  if (Object.keys(patch).length === 0) {
+  if (Object.keys(patch).length === 0 && body.permissionCodes === undefined) {
     throw AppError.validation('At least one field is required')
   }
 
   try {
-    await db.update(roles).set(patch).where(eq(roles.id, roleId))
+    await withTransaction(db, async (tx) => {
+      if (Object.keys(patch).length > 0) {
+        await tx.update(roles).set(patch).where(eq(roles.id, roleId))
+      }
+      if (body.permissionCodes !== undefined) {
+        await replaceRolePermissions(tx, roleId, body.permissionCodes)
+      }
+    })
   } catch (error) {
     if (isDuplicateEmailError(error)) {
       throw AppError.conflict('Role name already exists', [
@@ -546,5 +942,5 @@ export async function updateRole(
     throw error
   }
 
-  return getRoleById(db, roleId)
+  return getRoleWithPermissions(db, roleId)
 }

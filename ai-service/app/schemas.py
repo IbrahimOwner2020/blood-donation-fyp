@@ -20,7 +20,7 @@ class BloodGroup(str, Enum):
     O_NEG = "O-"
 
 
-HorizonDays = Literal[7, 14, 30]
+HorizonDays = Literal[7, 14, 30, 60]
 
 BaselineModelName = Literal[
     "historical_average",

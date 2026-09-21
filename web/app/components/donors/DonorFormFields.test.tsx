@@ -10,6 +10,7 @@ import {
 
 const sampleDonor: PublicDonor = {
   id: 1,
+  userId: null,
   donorNumber: "DN-100",
   firstName: "Asha",
   lastName: "Mwangi",

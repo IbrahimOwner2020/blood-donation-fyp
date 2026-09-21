@@ -123,6 +123,21 @@ export const PredictionAuditActions = {
 export type PredictionAuditAction =
   (typeof PredictionAuditActions)[keyof typeof PredictionAuditActions]
 
+/** Canonical daily AI analysis audit action codes. */
+export const AiAnalysisAuditActions = {
+  RUN_REQUESTED: 'ai_analysis.run_requested',
+  SCHEDULED_STARTED: 'ai_analysis.scheduled_started',
+  DATA_ACCESSED: 'ai_analysis.data_accessed',
+  COMPLETED: 'ai_analysis.completed',
+  FAILED: 'ai_analysis.failed',
+  NOTIFICATION_APPROVAL_REQUESTED:
+    'ai_analysis.notification_approval_requested',
+  NOTIFICATION_AUTO_SENT: 'ai_analysis.notification_auto_sent',
+} as const
+
+export type AiAnalysisAuditAction =
+  (typeof AiAnalysisAuditActions)[keyof typeof AiAnalysisAuditActions]
+
 /** Canonical shortage-alert audit action codes (docs/10 — alert status changes). */
 export const AlertAuditActions = {
   STATUS_CHANGE: 'alert.status_change',

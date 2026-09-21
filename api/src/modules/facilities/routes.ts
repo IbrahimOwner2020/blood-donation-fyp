@@ -2,21 +2,28 @@
  * Healthcare facilities routes (docs/04 facilities/, TODO.md §5).
  * Mounted under /api/v1/facilities.
  *
- * Permissions (docs/10 has no facilities:* codes — facilities gate blood requests):
- * - GET list/detail → requests:read
- * - POST create → requests:create
- * - PATCH update / soft-deactivate → requests:update
+ * Permissions:
+ * - GET list/detail -> facilities:read
+ * - POST create -> facilities:create
+ * - PATCH update / soft-deactivate -> facilities:update
  */
 
 import { Hono } from 'hono'
 
 import { getDb } from '../../db'
+import { AppError } from '../../lib/errors'
 import { jsonOk } from '../../lib/response'
 import type { AppHonoEnv } from '../../lib/types'
 import { parseJsonBody, parseParams, parseQuery } from '../../lib/validate'
 import { requireAuth } from '../../middleware/require-auth'
 import { requirePermission } from '../../middleware/require-permission'
 import { recordActivity } from '../../services/audit'
+import {
+  isFacilityManager,
+  isHospitalStaff,
+  requireAssignedFacilityId,
+  requireHospitalFacilityId,
+} from '../auth/access-scope'
 import {
   createFacilityBodySchema,
   facilityIdParamSchema,
@@ -50,14 +57,34 @@ export const facilitiesRoutes = new Hono<AppHonoEnv>()
 
 facilitiesRoutes.use('*', requireAuth)
 
+function shouldScopeFacilityView(
+  permissions: readonly string[] | undefined,
+): boolean {
+  const granted = permissions ?? []
+  return (
+    !granted.includes('facilities:create') &&
+    !granted.includes('users:manage')
+  )
+}
+
 /**
  * GET /facilities
  * Query: region?, district?, active?, q? (name contains)
  */
 facilitiesRoutes.get(
   '/',
-  requirePermission('requests:read'),
+  requirePermission('facilities:read'),
   async (c) => {
+    const roles = c.get('roles')
+    const user = c.get('user')
+    const facilityId =
+      isFacilityManager(roles) && shouldScopeFacilityView(c.get('permissions'))
+        ? requireAssignedFacilityId(user)
+        : requireHospitalFacilityId(user, roles)
+    if (typeof facilityId === 'number') {
+      const facility = await getFacilityById(getDb(), facilityId)
+      return jsonOk(c, { facilities: [facility] })
+    }
     const query = parseQuery(c, listFacilitiesQuerySchema)
     const facilities = await listFacilities(getDb(), query)
     return jsonOk(c, { facilities })
@@ -69,9 +96,18 @@ facilitiesRoutes.get(
  */
 facilitiesRoutes.get(
   '/:id',
-  requirePermission('requests:read'),
+  requirePermission('facilities:read'),
   async (c) => {
     const { id } = parseParams(c, facilityIdParamSchema)
+    const roles = c.get('roles')
+    const user = c.get('user')
+    const facilityId =
+      isFacilityManager(roles) && shouldScopeFacilityView(c.get('permissions'))
+        ? requireAssignedFacilityId(user)
+        : requireHospitalFacilityId(user, roles)
+    if (typeof facilityId === 'number' && id !== facilityId) {
+      throw AppError.notFound('Facility not found')
+    }
     const facility = await getFacilityById(getDb(), id)
     return jsonOk(c, { facility })
   },
@@ -83,8 +119,11 @@ facilitiesRoutes.get(
  */
 facilitiesRoutes.post(
   '/',
-  requirePermission('requests:create'),
+  requirePermission('facilities:create'),
   async (c) => {
+    if (isHospitalStaff(c.get('roles'))) {
+      throw AppError.forbidden('Hospital staff cannot create facilities')
+    }
     const body = await parseJsonBody(c, createFacilityBodySchema)
     const facility = await createFacility(getDb(), body)
     const actor = c.get('user')
@@ -115,8 +154,11 @@ facilitiesRoutes.post(
  */
 facilitiesRoutes.patch(
   '/:id',
-  requirePermission('requests:update'),
+  requirePermission('facilities:update'),
   async (c) => {
+    if (isHospitalStaff(c.get('roles'))) {
+      throw AppError.forbidden('Hospital staff cannot update facilities')
+    }
     const { id } = parseParams(c, facilityIdParamSchema)
     const body = await parseJsonBody(c, patchFacilityBodySchema)
     const { facility, previous, patch } = await patchFacility(getDb(), id, body)

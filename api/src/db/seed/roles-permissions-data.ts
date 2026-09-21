@@ -23,6 +23,31 @@ export const ROLE_SEEDS: readonly RoleSeed[] = [
       'Super admin with every permission: users, roles, operations, forecasts, alerts, reports, and activity.',
   },
   {
+    name: 'Facility Manager',
+    description:
+      'Manage users and operations for the assigned healthcare facility only.',
+  },
+  {
+    name: 'Donor Manager',
+    description:
+      'Manage donor records for the assigned facility or permitted operational scope.',
+  },
+  {
+    name: 'Blood Collector',
+    description:
+      'Record blood donations and view donor context for collection workflows.',
+  },
+  {
+    name: 'Blood Bank Manager',
+    description:
+      'Manage donations, inventory, blood requests, shortage alerts, and operational reporting.',
+  },
+  {
+    name: 'Doctor',
+    description:
+      'Create and monitor facility blood requests and record unit usage.',
+  },
+  {
     name: 'NBTS Blood Bank Officer',
     description:
       'Operate donors, donations, inventory, blood requests, shortage alerts, and notifications.',
@@ -32,12 +57,29 @@ export const ROLE_SEEDS: readonly RoleSeed[] = [
     description:
       'Access dashboards, forecasts, shortage alerts, reports, and notification monitoring.',
   },
+  {
+    name: 'Registered Donor',
+    description:
+      'Self-service donor account for viewing and updating only the linked donor profile.',
+  },
+  {
+    name: 'Hospital Staff',
+    description:
+      'Facility-scoped hospital operations for donors, donations, inventory usage, and blood requests.',
+  },
 ] as const
 
 const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   'users:manage': 'Create, update, and deactivate user accounts.',
+  'users:manage:facility':
+    "Create, update, and deactivate user accounts only within the actor's assigned facility.",
   'roles:manage': 'Assign roles and manage role–permission mappings.',
+  'roles:assign:facility':
+    "Assign facility-safe roles to users in the actor's assigned facility.",
   'activity:read': 'View activity / audit logs.',
+  'facilities:read': 'View healthcare facilities.',
+  'facilities:create': 'Create healthcare facilities.',
+  'facilities:update': 'Update healthcare facilities and soft-deactivate.',
   'donors:read': 'View donor records.',
   'donors:create': 'Register new donors.',
   'donors:update': 'Update donor records and soft-deactivate.',
@@ -67,6 +109,7 @@ export const PERMISSION_SEEDS: readonly PermissionSeed[] =
 /**
  * Role → permission mapping (docs/10 role capabilities).
  * System Administrator: every code in PERMISSION_CODES (super admin).
+ * Facility Manager: own-facility user/role assignment plus facility operations.
  * Officer: operational CRUD for donors through notifications.
  * Manager: dashboards/forecasts/alerts/reports + read monitoring.
  */
@@ -74,7 +117,68 @@ export const ROLE_PERMISSION_MAP: Readonly<
   Record<RoleName, readonly PermissionCode[]>
 > = {
   'System Administrator': PERMISSION_CODES,
+  'Facility Manager': [
+    'users:manage:facility',
+    'roles:assign:facility',
+    'facilities:read',
+    'donors:read',
+    'donors:create',
+    'donors:update',
+    'donations:read',
+    'donations:create',
+    'inventory:read',
+    'inventory:update',
+    'requests:read',
+    'requests:create',
+    'requests:update',
+    'alerts:read',
+    'alerts:update',
+    'notifications:read',
+    'reports:read',
+  ],
+  'Donor Manager': [
+    'facilities:read',
+    'donors:read',
+    'donors:create',
+    'donors:update',
+    'donations:read',
+    'reports:read',
+  ],
+  'Blood Collector': [
+    'facilities:read',
+    'donors:read',
+    'donations:read',
+    'donations:create',
+    'inventory:read',
+  ],
+  'Blood Bank Manager': [
+    'facilities:read',
+    'donors:read',
+    'donors:create',
+    'donors:update',
+    'donations:read',
+    'donations:create',
+    'inventory:read',
+    'inventory:update',
+    'requests:read',
+    'requests:create',
+    'requests:update',
+    'alerts:read',
+    'alerts:update',
+    'notifications:read',
+    'notifications:send',
+    'reports:read',
+  ],
+  Doctor: [
+    'facilities:read',
+    'inventory:read',
+    'inventory:update',
+    'requests:read',
+    'requests:create',
+    'requests:update',
+  ],
   'NBTS Blood Bank Officer': [
+    'facilities:read',
     'donors:read',
     'donors:create',
     'donors:update',
@@ -91,6 +195,7 @@ export const ROLE_PERMISSION_MAP: Readonly<
     'notifications:send',
   ],
   'Authorized Manager': [
+    'facilities:read',
     'donors:read',
     'donations:read',
     'inventory:read',
@@ -101,6 +206,18 @@ export const ROLE_PERMISSION_MAP: Readonly<
     'alerts:update',
     'notifications:read',
     'reports:read',
+  ],
+  'Registered Donor': [],
+  'Hospital Staff': [
+    'facilities:read',
+    'donors:create',
+    'donations:read',
+    'donations:create',
+    'inventory:read',
+    'inventory:update',
+    'requests:read',
+    'requests:create',
+    'requests:update',
   ],
 }
 

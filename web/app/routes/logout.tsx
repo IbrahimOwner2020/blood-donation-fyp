@@ -41,6 +41,14 @@ export async function clientLoader(_args: ClientLoaderFunctionArgs) {
 
 clientLoader.hydrate = true as const;
 
+export function loader() {
+  return redirect("/login", {
+    headers: {
+      "Set-Cookie": clearLegacyMockSessionCookie(),
+    },
+  });
+}
+
 export function HydrateFallback() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-nbts-surface">

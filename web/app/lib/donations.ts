@@ -55,6 +55,7 @@ export type PublicDonation = {
 export type ListDonationsParams = {
   donorId?: number;
   donationCentreId?: number;
+  facilityId?: number;
   bloodGroupId?: number;
   bloodGroup?: string;
   from?: string;
@@ -265,6 +266,13 @@ function buildDonationsQuery(params: ListDonationsParams = {}): string {
     params.donationCentreId > 0
   ) {
     search.set("donationCentreId", String(params.donationCentreId));
+  }
+  if (
+    typeof params.facilityId === "number" &&
+    Number.isFinite(params.facilityId) &&
+    params.facilityId > 0
+  ) {
+    search.set("facilityId", String(params.facilityId));
   }
   if (
     typeof params.bloodGroupId === "number" &&

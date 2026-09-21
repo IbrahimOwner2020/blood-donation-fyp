@@ -13,6 +13,7 @@ export type PublicBloodGroup = {
 
 export type PublicDonor = {
   id: number
+  userId: number | null
   donorNumber: string
   firstName: string
   lastName: string
@@ -32,6 +33,7 @@ export type PublicDonor = {
 
 export type DonorRow = {
   id: number
+  userId: number | null
   donorNumber: string
   firstName: string
   lastName: string
@@ -77,6 +79,7 @@ export function toPublicDonor(
 
   return {
     id: donor.id,
+    userId: donor.userId ?? null,
     donorNumber: donor.donorNumber ?? '',
     firstName: donor.firstName ?? '',
     lastName: donor.lastName ?? '',

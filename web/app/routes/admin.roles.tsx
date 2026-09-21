@@ -18,8 +18,11 @@ import { LoadingState } from "~/components/ui/LoadingState";
 import { PageHeader } from "~/components/ui/PageHeader";
 import {
   createAdminRole,
+  listAdminPermissions,
   listAdminRoles,
+  permissionCodesFromFormData,
   updateAdminRole,
+  type PermissionListItem,
   type RoleListItem,
 } from "~/lib/admin";
 import { ApiRequestError } from "~/lib/api";
@@ -39,8 +42,11 @@ type RolesLoaderData =
       status: "ok";
       session: AuthSession;
       roles: RoleListItem[];
+      permissions: PermissionListItem[];
       canManageUsers: boolean;
+      canManageFacilityUsers: boolean;
       canManageRoles: boolean;
+      canAssignFacilityRoles: boolean;
     }
   | { status: "forbidden" }
   | { status: "error"; message: string; detail?: string }
@@ -71,21 +77,42 @@ export async function clientLoader(
   }
 
   const canManageUsers = hasUiPermission(session, UI_PERMISSIONS.usersManage);
+  const canManageFacilityUsers = hasUiPermission(
+    session,
+    UI_PERMISSIONS.usersManageFacility,
+  );
   const canManageRoles = hasUiPermission(session, UI_PERMISSIONS.rolesManage);
+  const canAssignFacilityRoles = hasUiPermission(
+    session,
+    UI_PERMISSIONS.rolesAssignFacility,
+  );
 
-  // GET /roles allows users:manage OR roles:manage.
-  if (!canManageUsers && !canManageRoles) {
+  // GET /roles allows global/scoped user management or role assignment access.
+  if (
+    !canManageUsers &&
+    !canManageFacilityUsers &&
+    !canManageRoles &&
+    !canAssignFacilityRoles
+  ) {
     return { status: "forbidden" };
   }
 
   try {
-    const roles = await listAdminRoles();
+    const [roles, permissions] = await Promise.all([
+      listAdminRoles(),
+      canManageRoles
+        ? listAdminPermissions()
+        : Promise.resolve([] as PermissionListItem[]),
+    ]);
     return {
       status: "ok",
       session,
       roles,
+      permissions,
       canManageUsers,
+      canManageFacilityUsers,
       canManageRoles,
+      canAssignFacilityRoles,
     };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 403) {
@@ -123,6 +150,7 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
   const name = String(formData.get("name") || "").trim();
   const descriptionRaw = String(formData.get("description") || "");
   const description = descriptionRaw.trim() || null;
+  const permissionCodes = permissionCodesFromFormData(formData);
 
   if (intent === "create") {
     if (!name) {
@@ -132,7 +160,7 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
       );
     }
     try {
-      await createAdminRole({ name, description });
+      await createAdminRole({ name, description, permissionCodes });
       return null;
     } catch (error) {
       const message =
@@ -165,7 +193,7 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
       );
     }
     try {
-      await updateAdminRole(roleId, { name, description });
+      await updateAdminRole(roleId, { name, description, permissionCodes });
       return null;
     } catch (error) {
       const message =
@@ -210,8 +238,8 @@ export default function AdminRolesPage() {
         />
         <ForbiddenState
           title="Missing permission"
-          message="users:manage or roles:manage is required to list roles."
-          detail="UI gate: users:manage | roles:manage"
+          message="User or role assignment permission is required to list roles."
+          detail="UI gate: users:manage | users:manage:facility | roles:manage | roles:assign:facility"
         />
       </div>
     );
@@ -235,14 +263,15 @@ export default function AdminRolesPage() {
   }
 
   const roles = data.roles ?? [];
+  const permissions = data.permissions ?? [];
 
   return (
     <div>
       <PageHeader
         title="Admin · Roles"
-        description="List, create, and edit roles via GET/POST/PATCH /roles. Assign roles from a user detail page when you have roles:manage."
+        description="List, create, and edit roles via GET/POST/PATCH /roles. Assign roles from a user detail page when permitted."
         actions={
-          data.canManageUsers ? (
+          data.canManageUsers || data.canManageFacilityUsers ? (
             <Link
               to="/admin/users"
               className="rounded border border-nbts-border bg-nbts-panel px-3 py-2 text-sm font-medium text-nbts-ink hover:border-nbts-muted"
@@ -255,8 +284,9 @@ export default function AdminRolesPage() {
 
       {!data.canManageRoles ? (
         <p className="mb-4 rounded border border-dashed border-nbts-border bg-nbts-panel px-4 py-3 text-xs text-nbts-muted">
-          You can view roles with users:manage, but creating or editing roles
-          requires roles:manage. The API enforces both checks.
+          You can view assignable roles, but creating roles or editing
+          permission mappings requires roles:manage. The API enforces both
+          checks.
         </p>
       ) : null}
 
@@ -277,8 +307,7 @@ export default function AdminRolesPage() {
         <section className="mb-8 max-w-xl rounded-lg border border-nbts-border bg-nbts-panel p-5">
           <h2 className="text-base font-semibold text-nbts-ink">Create role</h2>
           <p className="mt-1 text-sm text-nbts-muted">
-            Name and optional description. Permission mappings remain seed/admin
-            tooling.
+            Name, optional description, and permission mapping.
           </p>
           <Form method="post" className="mt-4 grid gap-3">
             <input type="hidden" name="intent" value="create" />
@@ -301,6 +330,36 @@ export default function AdminRolesPage() {
               autoComplete="off"
               className="bg-white"
             />
+            {permissions.length > 0 ? (
+              <fieldset className="grid gap-2 rounded border border-nbts-border bg-white p-3">
+                <legend className="px-1 text-sm font-medium text-nbts-ink">
+                  Permissions
+                </legend>
+                {permissions.map((permission) => (
+                  <label
+                    key={permission.code}
+                    className="flex items-start gap-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      name="permissionCodes"
+                      value={permission.code}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="font-mono text-xs text-nbts-ink">
+                        {permission.code}
+                      </span>
+                      {permission.description ? (
+                        <span className="block text-xs text-nbts-muted">
+                          {permission.description}
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+            ) : null}
             <div>
               <button
                 type="submit"
@@ -350,6 +409,39 @@ export default function AdminRolesPage() {
                     autoComplete="off"
                     className="bg-white"
                   />
+                  {permissions.length > 0 ? (
+                    <fieldset className="sm:col-span-2 grid gap-2 rounded border border-nbts-border bg-white p-3">
+                      <legend className="px-1 text-sm font-medium text-nbts-ink">
+                        Permissions
+                      </legend>
+                      {permissions.map((permission) => (
+                        <label
+                          key={permission.code}
+                          className="flex items-start gap-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            name="permissionCodes"
+                            value={permission.code}
+                            defaultChecked={(role.permissionCodes ?? []).includes(
+                              permission.code,
+                            )}
+                            className="mt-1"
+                          />
+                          <span>
+                            <span className="font-mono text-xs text-nbts-ink">
+                              {permission.code}
+                            </span>
+                            {permission.description ? (
+                              <span className="block text-xs text-nbts-muted">
+                                {permission.description}
+                              </span>
+                            ) : null}
+                          </span>
+                        </label>
+                      ))}
+                    </fieldset>
+                  ) : null}
                   <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
                     <button
                       type="submit"
