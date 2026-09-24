@@ -12,6 +12,7 @@ import { Hono } from 'hono'
 
 import { getDb } from '../../db'
 import { AppError } from '../../lib/errors'
+import { getEnv } from '../../lib/env'
 import { jsonOk } from '../../lib/response'
 import type { AppHonoEnv } from '../../lib/types'
 import { parseJsonBody, parseParams, parseQuery } from '../../lib/validate'
@@ -32,6 +33,7 @@ import {
   listNotifications,
   previewNotifications,
   sendNotifications,
+  runEligibilityReminders,
 } from './service'
 
 export { NotificationAuditActions }
@@ -49,6 +51,23 @@ function clientIp(c: {
 }
 
 export const notificationRoutes = new Hono<AppHonoEnv>()
+
+notificationRoutes.post('/eligibility-reminders/run', async (c) => {
+  const configured = getEnv().ELIGIBILITY_REMINDER_SECRET
+  const supplied = c.req.header('x-reminder-secret') ?? ''
+  if (!configured || supplied !== configured) throw AppError.unauthorized('Invalid reminder job credentials')
+  const result = await runEligibilityReminders(getDb())
+  await recordActivity({
+    actorUserId: null,
+    action: 'notification.eligibility_reminders_run',
+    entityType: 'notification',
+    entityId: null,
+    metadata: result,
+    requestId: c.get('requestId') ?? null,
+    ipAddress: clientIp(c),
+  })
+  return jsonOk(c, result)
+})
 
 notificationRoutes.use('*', requireAuth)
 

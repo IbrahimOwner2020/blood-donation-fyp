@@ -15,6 +15,20 @@
       "when": 1788965511513,
       "tag": "0001_burly_zuras",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1790050275021,
+      "tag": "0002_damp_tusk",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1790052093566,
+      "tag": "0003_unusual_quasar",
+      "breakpoints": true
     }
   ]
 }

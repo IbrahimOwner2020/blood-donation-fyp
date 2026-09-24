@@ -44,7 +44,7 @@ import {
 } from "~/lib/donations";
 
 export const meta: MetaFunction = () => [
-  { title: "Donors · NBTS Blood AI" },
+  { title: "Donors · Blood Donation Management System" },
 ];
 
 type DonorFilters = {
@@ -160,7 +160,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include donors:read. The API remains the access authority.",
+        "Your session does not include donors:read. The server remains the access authority.",
       centres,
       filters,
     };
@@ -248,7 +248,7 @@ export default function DonorsIndexPage() {
     <div>
       <PageHeader
         title="Donors"
-        description="Search and filter donors. Eligibility labels are API-provided and shown as potentially eligible only — never as medical approval."
+        description="Search and filter donors. Eligibility labels are server-provided and shown as potentially eligible only — never as medical approval."
         actions={
           <ProtectedUi
             session={session}
@@ -272,14 +272,14 @@ export default function DonorsIndexPage() {
             data.message ||
             "You do not have permission to view donors (donors:read)."
           }
-          detail="UI gate only — the API enforces authorization."
+          detail="UI gate only — the server enforces authorization."
         />
       ) : null}
 
       {data?.status === "error" ? (
         <ErrorState
           title="Could not load donors"
-          message={data.message || "Unable to load donors from the API."}
+          message={data.message || "Unable to load donors from the server."}
         />
       ) : null}
 

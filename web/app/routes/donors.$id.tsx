@@ -52,7 +52,7 @@ import {
 } from "~/lib/notifications";
 
 export const meta: MetaFunction = () => [
-  { title: "Donor detail · NBTS Blood AI" },
+  { title: "Donor detail · Blood Donation Management System" },
 ];
 
 type HistoryLoadState<T> =
@@ -125,7 +125,7 @@ async function loadDonationHistory(
       status: "unavailable",
       message: formatApiErrorMessage(
         error,
-        "Donation history could not be loaded from the API.",
+        "Donation history could not be loaded from the server.",
       ),
     };
   }
@@ -164,7 +164,7 @@ async function loadNotificationHistory(
       status: "unavailable",
       message: formatApiErrorMessage(
         error,
-        "Notification history could not be loaded from the API.",
+        "Notification history could not be loaded from the server.",
       ),
     };
   }
@@ -190,7 +190,7 @@ export async function clientLoader({
       session,
       donorId: donorIdParam,
       message:
-        "Your session does not include donors:read. The API remains the access authority.",
+        "Your session does not include donors:read. The server remains the access authority.",
     };
   }
 
@@ -367,7 +367,7 @@ export default function DonorDetailPage() {
             data.message ||
             "You do not have permission to view this donor (donors:read)."
           }
-          detail="UI gate only — the API enforces authorization."
+          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to="/donors"
@@ -407,7 +407,7 @@ export default function DonorDetailPage() {
         <PageHeader title="Donor detail" />
         <ErrorState
           title="Could not load donor"
-          message={data.message || "Unable to load donor from the API."}
+          message={data.message || "Unable to load donor from the server."}
         />
         <p className="mt-4">
           <Link
@@ -464,17 +464,25 @@ export default function DonorDetailPage() {
       <section className="mb-6 rounded-lg border border-nbts-border bg-nbts-panel px-5 py-2">
         <h2 className="sr-only">Contact and eligibility</h2>
         <dl>
-          <DetailRow label="Donor number" value={donor.donorNumber} />
+          <DetailRow label="Membership number" value={donor.donorNumber} />
           <DetailRow label="First name" value={donor.firstName} />
           <DetailRow label="Last name" value={donor.lastName} />
           <DetailRow label="Phone" value={donor.phone} />
           <DetailRow label="Email" value={donor.email} />
+          <DetailRow label="Date of birth" value={donor.dateOfBirth} />
+          <DetailRow label="Sex" value={donor.sex} />
+          <DetailRow label="Address" value={donor.address} />
+          <DetailRow label="Current weight" value={donor.weightKg === null ? null : `${donor.weightKg} kg`} />
           <DetailRow label="Blood group" value={formatBloodGroup(donor)} />
           <DetailRow
             label="Eligibility"
             value={formatEligibilityStatus(donor.eligibilityStatus)}
           />
           <DetailRow label="Record status" value={formatActiveState(donor.active)} />
+          <DetailRow label="Total donations" value={String(donor.donationCount)} />
+          <DetailRow label="Last donation" value={donor.lastDonationDate} />
+          <DetailRow label="Next eligible date" value={donor.preliminaryEligibility.nextEligibleDate} />
+          <DetailRow label="Preliminary eligibility" value={`${donor.preliminaryEligibility.status.replaceAll("_", " ")} — ${donor.preliminaryEligibility.reasons.join("; ")}`} />
           <DetailRow
             label="Created"
             value={
@@ -548,7 +556,7 @@ export default function DonorDetailPage() {
           ) : donations.status === "ok" ? (
             <EmptyState
               title="No donations yet"
-              description="No donation records are linked to this donor in the API."
+              description="No donation records are linked to this donor in the server."
               action={
                 <ProtectedUi
                   session={session}
@@ -621,7 +629,7 @@ export default function DonorDetailPage() {
           ) : notifications.status === "ok" ? (
             <EmptyState
               title="No notifications yet"
-              description="No notification records are linked to this donor in the API."
+              description="No notification records are linked to this donor in the server."
             />
           ) : (
             <EmptyState

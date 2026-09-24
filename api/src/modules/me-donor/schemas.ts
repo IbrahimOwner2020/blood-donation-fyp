@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+import { donorSexes } from '../../db/schema/enums'
 
 const nameSchema = (label: string) =>
   z
@@ -32,6 +33,12 @@ export const updateOwnDonorBodySchema = z
     firstName: nameSchema('First name').optional(),
     lastName: nameSchema('Last name').optional(),
     phone: phoneSchema,
+    dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    sex: z.enum(donorSexes).optional(),
+    address: z.string().trim().min(3).max(1000).optional(),
+    weightKg: z.coerce.number().positive().max(300).optional(),
+    smsConsent: z.boolean().optional(),
+    emailConsent: z.boolean().optional(),
     bloodGroupId: z
       .number()
       .int('Blood group id must be an integer')
@@ -43,6 +50,12 @@ export const updateOwnDonorBodySchema = z
       body.firstName !== undefined ||
       body.lastName !== undefined ||
       body.phone !== undefined ||
+      body.dateOfBirth !== undefined ||
+      body.sex !== undefined ||
+      body.address !== undefined ||
+      body.weightKg !== undefined ||
+      body.smsConsent !== undefined ||
+      body.emailConsent !== undefined ||
       body.bloodGroupId !== undefined,
     { message: 'At least one field is required' },
   )

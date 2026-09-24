@@ -32,7 +32,7 @@ function formatAssistantMessage(message: string): string {
     try {
       const parsed = JSON.parse(trimmed) as unknown;
       if (typeof parsed === "object" && parsed !== null) {
-        return "I found NBTS data for that request, but it was not formatted for chat. Please ask for the specific summary or record fields you want.";
+        return "I found operational data for that request, but it was not formatted for chat. Please ask for the specific summary or record fields you want.";
       }
     } catch {
       return message;
@@ -49,7 +49,7 @@ export function DashboardAssistant() {
       id: "intro",
       role: "assistant",
       message:
-        "Ask about anything in the NBTS app, open a permitted page, or request an action like running a forecast or updating an alert.",
+        "Ask about donors, donations, inventory, blood requests, stock alerts, notifications, or operational reports. I will ask before any action that changes data.",
     },
   ]);
   const [message, setMessage] = useState("");
@@ -83,7 +83,11 @@ export function DashboardAssistant() {
     ]);
 
     try {
-      const result = await sendAssistantMessage({ message: text, context });
+      const history = items
+        .filter((item) => item.id !== "intro")
+        .slice(-10)
+        .map((item) => ({ role: item.role, content: item.message }));
+      const result = await sendAssistantMessage({ message: text, context, history });
       if (result.type === "navigation") {
         setItems((current) => [
           ...current,
@@ -182,10 +186,10 @@ export function DashboardAssistant() {
           <header className="flex items-center justify-between border-b border-nbts-border px-4 py-3">
             <div>
               <h2 className="text-sm font-semibold text-nbts-ink">
-                NBTS assistant
+                System assistant
               </h2>
               <p className="text-xs text-nbts-muted">
-                API permissions apply to every action.
+                Your role and facility access apply to every action.
               </p>
             </div>
             <button

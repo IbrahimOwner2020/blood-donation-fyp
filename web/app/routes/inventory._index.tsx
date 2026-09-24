@@ -42,7 +42,7 @@ import {
 } from "~/lib/inventory";
 
 export const meta: MetaFunction = () => [
-  { title: "Inventory · NBTS Blood AI" },
+  { title: "Inventory · Blood Donation Management System" },
 ];
 
 type InventoryView = "units" | "summary" | "expiring" | "low-stock";
@@ -140,7 +140,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include inventory:read. The API remains the access authority.",
+        "Your session does not include inventory:read. The server remains the access authority.",
       filters,
     };
   }
@@ -244,7 +244,7 @@ export async function clientLoader({
         offset: filters.offset,
         unavailableMessage: formatApiErrorMessage(
           error,
-          "Inventory endpoints are not available yet. Counts remain API-owned when the module lands.",
+          "Inventory endpoints are not available yet. Counts remain server-owned when the module lands.",
         ),
       };
     }
@@ -432,7 +432,7 @@ export default function InventoryIndexPage() {
     <div>
       <PageHeader
         title="Inventory"
-        description="Summary by blood group, unit list, low-stock, and expiry views. All counts come from the API — never computed here."
+        description="Summary by blood group, unit list, low-stock, and expiry views. All counts come from the server — never computed here."
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -469,21 +469,21 @@ export default function InventoryIndexPage() {
             data.message ||
             "You do not have permission to view inventory (inventory:read)."
           }
-          detail="UI gate only — the API enforces authorization."
+          detail="UI gate only — the server enforces authorization."
         />
       ) : null}
 
       {data?.status === "error" ? (
         <ErrorState
           title="Could not load inventory"
-          message={data.message || "Unable to load inventory from the API."}
+          message={data.message || "Unable to load inventory from the server."}
         />
       ) : null}
 
       {data?.status === "ok" && data.unavailableMessage ? (
         <div className="mb-4">
           <EmptyState
-            title="Inventory API not available yet"
+            title="Inventory server not available yet"
             description={data.unavailableMessage}
           />
         </div>
@@ -569,7 +569,7 @@ export default function InventoryIndexPage() {
             <SummaryTable
               rows={data.summary}
               emptyTitle="No summary rows"
-              emptyDescription="Inventory summary by blood group will appear when the API returns data."
+              emptyDescription="Inventory summary by blood group will appear when the server returns data."
             />
           ) : null}
 
@@ -577,7 +577,7 @@ export default function InventoryIndexPage() {
             <SummaryTable
               rows={data.lowStock}
               emptyTitle="No low-stock groups"
-              emptyDescription="Low-stock statuses come from the API. Empty means none reported (or the endpoint is empty)."
+              emptyDescription="Low-stock statuses come from the server. Empty means none reported (or the endpoint is empty)."
             />
           ) : null}
 

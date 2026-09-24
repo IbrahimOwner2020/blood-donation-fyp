@@ -1,17 +1,6 @@
 import { AppError } from '../../lib/errors'
 import { PERMISSION_CODES, type PermissionCode } from '../../lib/permissions'
 import type { Db } from '../../db/client'
-import { getDashboardSummary } from '../dashboard/service'
-import { dashboardSummaryQuerySchema } from '../dashboard/schemas'
-import { runPrediction } from '../predictions/service'
-import { afterPredictionPersisted } from '../alerts/hooks'
-import { recalculateAlerts, patchAlertStatus } from '../alerts/service'
-import {
-  patchAlertStatusBodySchema,
-  recalculateAlertsBodySchema,
-  listAlertsQuerySchema,
-} from '../alerts/schemas'
-import { listAlerts } from '../alerts/service'
 import { listDonations } from '../donations/service'
 import { listDonationsQuerySchema } from '../donations/schemas'
 import { listDonors } from '../donors/service'
@@ -25,18 +14,18 @@ import {
 } from '../notifications/schemas'
 import { updateInventoryUnit } from '../inventory/service'
 import { updateInventoryBodySchema } from '../inventory/schemas'
-import { runPredictionBodySchema } from '../predictions/schemas'
 import type { AiServiceClient } from '../../services/ai'
 import type { AssistantMessageBody } from './schemas'
 import { assistantResultSchema } from './schemas'
 import type { AssistantToolSession } from './tool-session-store'
+import {
+  ASSISTANT_NAVIGATION_TARGETS,
+  resolveAssistantNavigationTarget,
+} from './navigation'
 
 type PermissionSet = readonly string[]
 
 export type AssistantActionName =
-  | 'prediction.run'
-  | 'alert.recalculate'
-  | 'alert.status'
   | 'notification.preview'
   | 'notification.send'
   | 'inventory.update'
@@ -88,26 +77,6 @@ export const AssistantAuditActions = {
 } as const
 
 const VALID_PERMISSION_CODES = new Set<string>(PERMISSION_CODES)
-
-const NAV_TARGETS: Array<{
-  keywords: string[]
-  path: string
-  label: string
-  permission?: PermissionCode
-}> = [
-  { keywords: ['dashboard', 'overview', 'home'], path: '/dashboard', label: 'dashboard', permission: 'reports:read' },
-  { keywords: ['alert', 'alerts', 'shortage'], path: '/alerts', label: 'alerts', permission: 'alerts:read' },
-  { keywords: ['donor', 'donors'], path: '/donors', label: 'donors', permission: 'donors:read' },
-  { keywords: ['donation', 'donations'], path: '/donations', label: 'donations', permission: 'donations:read' },
-  { keywords: ['inventory', 'stock', 'units'], path: '/inventory', label: 'inventory', permission: 'inventory:read' },
-  { keywords: ['request', 'requests'], path: '/blood-requests', label: 'blood requests', permission: 'requests:read' },
-  { keywords: ['forecast', 'forecasts', 'prediction', 'predictions'], path: '/predictions', label: 'forecasts', permission: 'predictions:read' },
-  { keywords: ['notify', 'notification', 'notifications'], path: '/notifications', label: 'notifications', permission: 'notifications:read' },
-  { keywords: ['report', 'reports'], path: '/reports', label: 'reports', permission: 'reports:read' },
-  { keywords: ['users', 'user admin'], path: '/admin/users', label: 'users', permission: 'users:manage' },
-  { keywords: ['roles', 'permissions'], path: '/admin/roles', label: 'roles', permission: 'roles:manage' },
-  { keywords: ['activity', 'audit'], path: '/admin/activity', label: 'activity', permission: 'activity:read' },
-]
 
 function hasPermission(permissions: PermissionSet, code: PermissionCode): boolean {
   return permissions.includes(code)
@@ -228,7 +197,7 @@ function maybeNavigation(message: string, permissions: PermissionSet): Assistant
     return null
   }
 
-  const target = NAV_TARGETS.find((item) =>
+  const target = ASSISTANT_NAVIGATION_TARGETS.find((item) =>
     item.keywords.some((keyword) => text.includes(keyword)),
   )
   if (!target) {
@@ -249,75 +218,6 @@ function maybeAction(message: string, permissions: PermissionSet): AssistantResu
   const text = normalizeText(message)
   const original = message.trim()
 
-  if (/\b(run|create|generate)\b/.test(text) && /\b(prediction|forecast)\b/.test(text)) {
-    const requiredPermission = 'predictions:run'
-    if (!hasPermission(permissions, requiredPermission)) return deny(requiredPermission)
-    const bloodGroup = extractBloodGroup(original)
-    if (!bloodGroup) {
-      return { type: 'answer', message: 'Which blood group should I run the prediction for? Include values like O+ or AB-.' }
-    }
-    const payload = {
-      bloodGroup,
-      horizonDays: extractHorizonDays(original) ?? 7,
-      facilityId: extractPositiveInt(original, ['facility']),
-    }
-    return {
-      type: 'action_proposal',
-      message: 'I can run that forecast after you confirm.',
-      proposal: createAssistantProposal(
-        'prediction.run',
-        requiredPermission,
-        `Run ${payload.horizonDays}-day forecast for ${bloodGroup}`,
-        `Create a new prediction for blood group ${bloodGroup}.`,
-        payload,
-        'Calls the prediction service, persists the forecast, and lets the alert hook evaluate shortage gaps.',
-      ),
-    }
-  }
-
-  if (/\b(recalculate|refresh|recompute)\b/.test(text) && /\b(alert|alerts|shortage)\b/.test(text)) {
-    const requiredPermission = 'alerts:update'
-    if (!hasPermission(permissions, requiredPermission)) return deny(requiredPermission)
-    const payload = {
-      predictionId: extractPositiveInt(original, ['prediction']),
-      bloodGroup: extractBloodGroup(original),
-      facilityId: extractPositiveInt(original, ['facility']),
-    }
-    return {
-      type: 'action_proposal',
-      message: 'I can recalculate shortage alerts after you confirm.',
-      proposal: createAssistantProposal(
-        'alert.recalculate',
-        requiredPermission,
-        'Recalculate shortage alerts',
-        payload.bloodGroup ? `Recalculate alerts for ${payload.bloodGroup}.` : 'Recalculate alerts from the latest prediction data.',
-        payload,
-        'Creates, updates, or resolves shortage alerts according to API gap rules.',
-      ),
-    }
-  }
-
-  if (/\b(alert|alerts)\b/.test(text) && /\b(acknowledge|resolve|dismiss|reopen|open)\b/.test(text)) {
-    const requiredPermission = 'alerts:update'
-    if (!hasPermission(permissions, requiredPermission)) return deny(requiredPermission)
-    const alertId = extractPositiveInt(original, ['alert'])
-    const status = extractAlertStatus(original)
-    if (!alertId || !status) {
-      return { type: 'answer', message: 'Please include the alert id and target status, for example: acknowledge alert 12.' }
-    }
-    return {
-      type: 'action_proposal',
-      message: 'I can update that alert after you confirm.',
-      proposal: createAssistantProposal(
-        'alert.status',
-        requiredPermission,
-        `Set alert #${alertId} to ${status}`,
-        `Change shortage alert #${alertId} status to ${status}.`,
-        { alertId, status },
-        'Updates the alert lifecycle and records an audit event.',
-      ),
-    }
-  }
 
   if (/\b(send|notify|preview|draft|compose)\b/.test(text) && /\b(notification|notifications|donor|donors|sms|email|text)\b/.test(text)) {
     const isSend = /\b(send|notify)\b/.test(text) && !/\bpreview|draft|compose\b/.test(text)
@@ -473,15 +373,6 @@ async function maybeReadRecords(
     }
   }
 
-  if (/\balerts?\b|\bshortage\b/.test(text)) {
-    if (!hasPermission(permissions, 'alerts:read')) return deny('alerts:read')
-    const result = await listAlerts(db, listAlertsQuerySchema.parse({ limit: 10 }))
-    return {
-      type: 'answer',
-      message: formatRecords('alert records', result, ['bloodGroup', 'severity', 'status', 'gapUnits']),
-    }
-  }
-
   if (/\bdonations?\b/.test(text)) {
     if (!hasPermission(permissions, 'donations:read')) return deny('donations:read')
     const result = await listDonations(db, listDonationsQuerySchema.parse({ limit: 10 }))
@@ -508,21 +399,6 @@ async function systemReport(
   permissions: PermissionSet,
 ): Promise<AssistantResult> {
   const sections: string[] = []
-
-  if (hasPermission(permissions, 'reports:read')) {
-    const summary = await getDashboardSummary(db, dashboardSummaryQuerySchema.parse({}))
-    sections.push(
-      `Dashboard snapshot: ${summary.kpis.availableUnits} available units, ` +
-        `${summary.kpis.lowStockGroupCount} low-stock groups, ` +
-        `${summary.kpis.activeAlerts} active alerts, and ` +
-        `${summary.kpis.donationsThisPeriod} donations in the selected period.`,
-    )
-  }
-
-  if (hasPermission(permissions, 'alerts:read')) {
-    const alerts = await listAlerts(db, listAlertsQuerySchema.parse({ limit: 5 }))
-    sections.push(formatRecords('alert records', alerts, ['bloodGroup', 'severity', 'status', 'gapUnits']))
-  }
 
   if (hasPermission(permissions, 'inventory:read')) {
     const inventory = await listInventory(db, listInventoryQuerySchema.parse({ limit: 5 }))
@@ -577,11 +453,29 @@ export async function handleAssistantMessage(
       const aiResult = await options.aiClient.chat({
         message: body.message,
         context: body.context,
+        history: body.history,
         permissions: [...permissions],
         toolSessionToken: options.toolSession.token,
         toolsUrl: options.toolsUrl,
       })
-      return assistantResultSchema.parse(aiResult) as AssistantResult
+      const parsedResult = assistantResultSchema.parse(aiResult) as AssistantResult
+      if (parsedResult.type !== 'navigation') {
+        return parsedResult
+      }
+
+      const target = resolveAssistantNavigationTarget(parsedResult.path)
+      if (!target) {
+        throw new Error('Assistant returned an unknown navigation target')
+      }
+      if (target.permission && !hasPermission(permissions, target.permission)) {
+        return deny(target.permission)
+      }
+      return {
+        type: 'navigation',
+        message: parsedResult.message,
+        path: target.path,
+        ...(target.permission ? { requiredPermission: target.permission } : {}),
+      }
     } catch {
       // Fall through to deterministic local handling when AI chat is unavailable
       // or returns an invalid control payload.
@@ -617,15 +511,7 @@ export async function handleAssistantMessage(
 
   if (/\b(kpi|summary|dashboard|overview|available|low stock|alerts|donations)\b/.test(text)) {
     if (!hasPermission(permissions, 'reports:read')) return deny('reports:read')
-    const summary = await getDashboardSummary(db, dashboardSummaryQuerySchema.parse({}))
-    return {
-      type: 'answer',
-      message:
-        `Dashboard snapshot: ${summary.kpis.availableUnits} available units, ` +
-        `${summary.kpis.lowStockGroupCount} low-stock groups, ` +
-        `${summary.kpis.activeAlerts} active alerts, and ` +
-        `${summary.kpis.donationsThisPeriod} donations in the selected period.`,
-    }
+    return systemReport(db, permissions)
   }
 
   return contextualAnswer(body)
@@ -642,36 +528,6 @@ export async function executeAssistantAction(
   ensurePermission(permissions, proposal.requiredPermission)
 
   switch (proposal.action) {
-    case 'prediction.run': {
-      const body = runPredictionBodySchema.parse(proposal.payload)
-      const result = await runPrediction(db, body, { afterPredictionPersisted })
-      return {
-        action: proposal.action,
-        message: `Forecast created for prediction #${result.prediction.id}.`,
-        data: result,
-      }
-    }
-    case 'alert.recalculate': {
-      const body = recalculateAlertsBodySchema.parse(proposal.payload)
-      const result = await recalculateAlerts(db, body)
-      return {
-        action: proposal.action,
-        message: `Alert recalculation finished with ${result.results?.length ?? 0} result${result.results?.length === 1 ? '' : 's'}.`,
-        data: result,
-      }
-    }
-    case 'alert.status': {
-      const alertId = Number(proposal.payload.alertId)
-      const body = patchAlertStatusBodySchema.parse({
-        status: proposal.payload.status,
-      })
-      const result = await patchAlertStatus(db, alertId, body)
-      return {
-        action: proposal.action,
-        message: `Alert #${result.alert.id} is now ${result.alert.status}.`,
-        data: result,
-      }
-    }
     case 'notification.preview': {
       const body = previewNotificationsBodySchema.parse(proposal.payload)
       const result = await previewNotifications(db, body)

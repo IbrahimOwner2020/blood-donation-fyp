@@ -7,7 +7,7 @@ type ErrorStateProps = {
 
 export function ErrorState({
   title = "Something went wrong",
-  message = "The page could not load. Try again, or return once the API is available.",
+  message = "The page could not load. Try again, or return once the server is available.",
   detail,
   className = "",
 }: ErrorStateProps = {}) {

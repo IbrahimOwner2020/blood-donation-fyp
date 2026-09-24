@@ -13,19 +13,20 @@ import type { AppHonoEnv } from '../../lib/types'
 import { parseQuery } from '../../lib/validate'
 import { requireAuth } from '../../middleware/require-auth'
 import { requirePermission } from '../../middleware/require-permission'
+import { requireHospitalFacilityId } from '../auth/access-scope'
 import {
-  demandReportQuerySchema,
+  bloodRequestsReportQuerySchema,
+  donorEligibilityReportQuerySchema,
   donationsReportQuerySchema,
   inventoryReportQuerySchema,
   notificationsReportQuerySchema,
-  predictionsReportQuerySchema,
 } from './schemas'
 import {
-  getDemandReport,
+  getBloodRequestsReport,
+  getDonorEligibilityReport,
   getDonationsReport,
   getInventoryReport,
   getNotificationsReport,
-  getPredictionsReport,
 } from './service'
 
 export const reportRoutes = new Hono<AppHonoEnv>()
@@ -41,7 +42,11 @@ reportRoutes.get(
   requirePermission('reports:read'),
   async (c) => {
     const query = parseQuery(c, inventoryReportQuerySchema)
-    const report = await getInventoryReport(getDb(), query)
+    const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+    const report = await getInventoryReport(
+      getDb(),
+      typeof facilityId === 'number' ? { ...query, facilityId } : query,
+    )
     return jsonOk(c, report)
   },
 )
@@ -64,25 +69,22 @@ reportRoutes.get(
  * GET /reports/demand
  * Query: from?, to?, bloodGroupId?, bloodGroup?
  */
-reportRoutes.get('/demand', requirePermission('reports:read'), async (c) => {
-  const query = parseQuery(c, demandReportQuerySchema)
-  const report = await getDemandReport(getDb(), query)
+reportRoutes.get('/blood-requests', requirePermission('reports:read'), async (c) => {
+  const query = parseQuery(c, bloodRequestsReportQuerySchema)
+  const facilityId = requireHospitalFacilityId(c.get('user'), c.get('roles'))
+  const report = await getBloodRequestsReport(
+    getDb(),
+    typeof facilityId === 'number' ? { ...query, facilityId } : query,
+  )
   return jsonOk(c, report)
 })
 
-/**
- * GET /reports/predictions
- * Query: from?, to?, bloodGroupId?, bloodGroup? (filters forecast_start)
- */
-reportRoutes.get(
-  '/predictions',
-  requirePermission('reports:read'),
-  async (c) => {
-    const query = parseQuery(c, predictionsReportQuerySchema)
-    const report = await getPredictionsReport(getDb(), query)
-    return jsonOk(c, report)
-  },
-)
+reportRoutes.get('/donor-eligibility', requirePermission('reports:read'), async (c) => {
+  const query = parseQuery(c, donorEligibilityReportQuerySchema)
+  const report = await getDonorEligibilityReport(getDb(), query)
+  return jsonOk(c, report)
+})
+
 
 /**
  * GET /reports/notifications

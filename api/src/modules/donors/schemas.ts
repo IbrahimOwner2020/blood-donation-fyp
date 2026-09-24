@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { donorEligibilityStatuses } from '../../db/schema/enums'
+import { donorEligibilityStatuses, donorSexes } from '../../db/schema/enums'
 import { BLOOD_GROUP_SEEDS } from '../../db/seed/blood-groups-data'
 
 const BLOOD_GROUP_CODES = BLOOD_GROUP_SEEDS.map((g) => g.code) as [
@@ -18,7 +18,7 @@ export const donorEligibilityStatusSchema = z.enum(donorEligibilityStatuses)
 export const bloodGroupCodeSchema = z.enum(BLOOD_GROUP_CODES)
 
 const donorNumberSchema = z
-  .string({ required_error: 'Donor number is required' })
+  .string()
   .trim()
   .min(1, 'Donor number is required')
   .max(64, 'Donor number must be at most 64 characters')
@@ -38,7 +38,7 @@ const lastNameSchema = z
 /**
  * Optional contact phone. Empty string / null → null (unique indexes).
  */
-const phoneSchema = z.preprocess((raw) => {
+export const donorPhoneSchema = z.preprocess((raw) => {
   if (raw === undefined) {
     return undefined
   }
@@ -56,12 +56,12 @@ const phoneSchema = z.preprocess((raw) => {
     .min(7, 'Phone must be at least 7 characters')
     .max(32, 'Phone must be at most 32 characters'),
   z.null(),
-]).optional())
+]))
 
 /**
  * Optional contact email. Empty string / null → null.
  */
-const emailSchema = z.preprocess((raw) => {
+export const donorEmailSchema = z.preprocess((raw) => {
   if (raw === undefined) {
     return undefined
   }
@@ -76,7 +76,34 @@ const emailSchema = z.preprocess((raw) => {
 }, z.union([
   z.string().email('Invalid email address').max(255, 'Email must be at most 255 characters'),
   z.null(),
-]).optional())
+]))
+
+const requiredDonorPhoneSchema = donorPhoneSchema.refine(
+  (value): value is string => typeof value === 'string',
+  'Phone is required',
+)
+
+const requiredDonorEmailSchema = donorEmailSchema.refine(
+  (value): value is string => typeof value === 'string',
+  'Email is required',
+)
+
+export const dateOfBirthSchema = z
+  .string({ required_error: 'Date of birth is required' })
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of birth must be YYYY-MM-DD')
+
+export const donorSexSchema = z.enum(donorSexes)
+
+export const donorAddressSchema = z
+  .string({ required_error: 'Address is required' })
+  .trim()
+  .min(3, 'Address is required')
+  .max(1000, 'Address must be at most 1000 characters')
+
+export const donorWeightKgSchema = z.coerce
+  .number({ required_error: 'Weight is required' })
+  .positive('Weight must be positive')
+  .max(300, 'Weight must be at most 300 kg')
 
 /** Coerce common query string booleans ("true"/"false"/"1"/"0"). */
 const queryBooleanSchema = z
@@ -102,11 +129,17 @@ export const donorIdParamSchema = z.object({
 export type DonorIdParam = z.infer<typeof donorIdParamSchema>
 
 export const createDonorBodySchema = z.object({
-  donorNumber: donorNumberSchema,
+  donorNumber: donorNumberSchema.optional(),
   firstName: firstNameSchema,
   lastName: lastNameSchema,
-  phone: phoneSchema,
-  email: emailSchema,
+  phone: requiredDonorPhoneSchema,
+  email: requiredDonorEmailSchema,
+  dateOfBirth: dateOfBirthSchema,
+  sex: donorSexSchema,
+  address: donorAddressSchema,
+  weightKg: donorWeightKgSchema,
+  smsConsent: z.boolean().optional().default(false),
+  emailConsent: z.boolean().optional().default(false),
   bloodGroupId: z
     .number({ required_error: 'Blood group is required' })
     .int('Blood group id must be an integer')
@@ -125,8 +158,14 @@ export const updateDonorBodySchema = z
     donorNumber: donorNumberSchema.optional(),
     firstName: firstNameSchema.optional(),
     lastName: lastNameSchema.optional(),
-    phone: phoneSchema,
-    email: emailSchema,
+    phone: donorPhoneSchema.optional(),
+    email: donorEmailSchema.optional(),
+    dateOfBirth: dateOfBirthSchema.optional(),
+    sex: donorSexSchema.optional(),
+    address: donorAddressSchema.optional(),
+    weightKg: donorWeightKgSchema.optional(),
+    smsConsent: z.boolean().optional(),
+    emailConsent: z.boolean().optional(),
     bloodGroupId: z
       .number()
       .int('Blood group id must be an integer')
@@ -142,6 +181,12 @@ export const updateDonorBodySchema = z
       body.lastName !== undefined ||
       body.phone !== undefined ||
       body.email !== undefined ||
+      body.dateOfBirth !== undefined ||
+      body.sex !== undefined ||
+      body.address !== undefined ||
+      body.weightKg !== undefined ||
+      body.smsConsent !== undefined ||
+      body.emailConsent !== undefined ||
       body.bloodGroupId !== undefined ||
       body.eligibilityStatus !== undefined ||
       body.active !== undefined,

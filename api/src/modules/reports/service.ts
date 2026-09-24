@@ -12,6 +12,7 @@ import {
   eq,
   gte,
   lte,
+  max,
   sql,
   sum,
   type SQL,
@@ -19,9 +20,8 @@ import {
 
 import type { Db } from '../../db'
 import {
-  aiPredictions,
   bloodGroups,
-  demandRecords,
+  bloodRequests,
   donations,
   donors,
   notifications,
@@ -32,11 +32,11 @@ import {
   type InventorySummaryResult,
 } from '../inventory/service'
 import type {
-  DemandReportQuery,
+  BloodRequestsReportQuery,
+  DonorEligibilityReportQuery,
   DonationsReportQuery,
   InventoryReportQuery,
   NotificationsReportQuery,
-  PredictionsReportQuery,
 } from './schemas'
 import {
   toDateOnlyString,
@@ -44,6 +44,7 @@ import {
   toPublicBloodGroup,
   type PublicBloodGroupSummary,
 } from './serialize'
+import { calculateDonorEligibility } from '../donors/eligibility'
 
 type Executor = Db
 
@@ -341,46 +342,45 @@ export async function getDonationsReport(
   }
 }
 
-export type DemandByBloodGroupRow = {
+export type BloodRequestsByBloodGroupRow = {
   bloodGroupId: number
   bloodGroup: PublicBloodGroupSummary | null
   unitsRequested: number
-  unitsIssued: number
-  unitsUsed: number
+  fulfilledUnits: number
   unfulfilledUnits: number
+  requestCount: number
 }
 
-export type DemandByDateRow = {
+export type BloodRequestsByDateRow = {
   date: string
   unitsRequested: number
-  unitsIssued: number
-  unitsUsed: number
+  fulfilledUnits: number
   unfulfilledUnits: number
 }
 
-export type DemandReportResult = {
-  report: 'demand'
+export type BloodRequestsReportResult = {
+  report: 'blood-requests'
   filters: {
     from: string | null
     to: string | null
     bloodGroupId: number | null
     bloodGroup: string | null
+    facilityId: number | null
   }
   totals: {
     unitsRequested: number
-    unitsIssued: number
-    unitsUsed: number
+    fulfilledUnits: number
     unfulfilledUnits: number
-    recordCount: number
+    requestCount: number
   }
-  byBloodGroup: DemandByBloodGroupRow[]
-  byDate: DemandByDateRow[]
+  byBloodGroup: BloodRequestsByBloodGroupRow[]
+  byDate: BloodRequestsByDateRow[]
 }
 
-export async function getDemandReport(
+export async function getBloodRequestsReport(
   db: Db,
-  query: DemandReportQuery,
-): Promise<DemandReportResult> {
+  query: BloodRequestsReportQuery,
+): Promise<BloodRequestsReportResult> {
   const bloodGroupId = await resolveBloodGroupId(
     db,
     query.bloodGroupId,
@@ -389,43 +389,45 @@ export async function getDemandReport(
 
   const parts: SQL[] = []
   if (query.from) {
-    parts.push(gte(demandRecords.date, query.from))
+    parts.push(gte(bloodRequests.requestedAt, utcDayStart(query.from)))
   }
   if (query.to) {
-    parts.push(lte(demandRecords.date, query.to))
+    parts.push(lte(bloodRequests.requestedAt, utcDayEnd(query.to)))
   }
   if (typeof bloodGroupId === 'number') {
-    parts.push(eq(demandRecords.bloodGroupId, bloodGroupId))
+    parts.push(eq(bloodRequests.bloodGroupId, bloodGroupId))
+  }
+  if (typeof query.facilityId === 'number') {
+    parts.push(eq(bloodRequests.facilityId, query.facilityId))
   }
   const where = parts.length > 0 ? and(...parts) : undefined
 
   const [totalRow] = await db
     .select({
-      recordCount: count(),
-      unitsRequested: sum(demandRecords.unitsRequested),
-      unitsIssued: sum(demandRecords.unitsIssued),
-      unitsUsed: sum(demandRecords.unitsUsed),
-      unfulfilledUnits: sum(demandRecords.unfulfilledUnits),
+      requestCount: count(),
+      unitsRequested: sum(bloodRequests.unitsRequested),
+      fulfilledUnits: sum(bloodRequests.fulfilledUnits),
+      unfulfilledUnits: sum(sql`GREATEST(${bloodRequests.unitsRequested} - ${bloodRequests.fulfilledUnits}, 0)`),
     })
-    .from(demandRecords)
+    .from(bloodRequests)
     .where(where)
 
   const byGroupRows = await db
     .select({
-      bloodGroupId: demandRecords.bloodGroupId,
+      bloodGroupId: bloodRequests.bloodGroupId,
       code: bloodGroups.code,
       abo: bloodGroups.abo,
       rh: bloodGroups.rh,
-      unitsRequested: sum(demandRecords.unitsRequested),
-      unitsIssued: sum(demandRecords.unitsIssued),
-      unitsUsed: sum(demandRecords.unitsUsed),
-      unfulfilledUnits: sum(demandRecords.unfulfilledUnits),
+      requestCount: count(),
+      unitsRequested: sum(bloodRequests.unitsRequested),
+      fulfilledUnits: sum(bloodRequests.fulfilledUnits),
+      unfulfilledUnits: sum(sql`GREATEST(${bloodRequests.unitsRequested} - ${bloodRequests.fulfilledUnits}, 0)`),
     })
-    .from(demandRecords)
-    .innerJoin(bloodGroups, eq(demandRecords.bloodGroupId, bloodGroups.id))
+    .from(bloodRequests)
+    .innerJoin(bloodGroups, eq(bloodRequests.bloodGroupId, bloodGroups.id))
     .where(where)
     .groupBy(
-      demandRecords.bloodGroupId,
+      bloodRequests.bloodGroupId,
       bloodGroups.code,
       bloodGroups.abo,
       bloodGroups.rh,
@@ -434,30 +436,29 @@ export async function getDemandReport(
 
   const byDateRows = await db
     .select({
-      date: demandRecords.date,
-      unitsRequested: sum(demandRecords.unitsRequested),
-      unitsIssued: sum(demandRecords.unitsIssued),
-      unitsUsed: sum(demandRecords.unitsUsed),
-      unfulfilledUnits: sum(demandRecords.unfulfilledUnits),
+      date: sql<string>`DATE(${bloodRequests.requestedAt})`.as('date'),
+      unitsRequested: sum(bloodRequests.unitsRequested),
+      fulfilledUnits: sum(bloodRequests.fulfilledUnits),
+      unfulfilledUnits: sum(sql`GREATEST(${bloodRequests.unitsRequested} - ${bloodRequests.fulfilledUnits}, 0)`),
     })
-    .from(demandRecords)
+    .from(bloodRequests)
     .where(where)
-    .groupBy(demandRecords.date)
-    .orderBy(asc(demandRecords.date))
+    .groupBy(sql`DATE(${bloodRequests.requestedAt})`)
+    .orderBy(asc(sql`DATE(${bloodRequests.requestedAt})`))
 
   return {
-    report: 'demand',
+    report: 'blood-requests',
     filters: {
       from: query.from ?? null,
       to: query.to ?? null,
       bloodGroupId: bloodGroupId ?? null,
       bloodGroup: query.bloodGroup ?? null,
+      facilityId: query.facilityId ?? null,
     },
     totals: {
-      recordCount: toFiniteNumber(totalRow?.recordCount),
+      requestCount: toFiniteNumber(totalRow?.requestCount),
       unitsRequested: toFiniteNumber(totalRow?.unitsRequested),
-      unitsIssued: toFiniteNumber(totalRow?.unitsIssued),
-      unitsUsed: toFiniteNumber(totalRow?.unitsUsed),
+      fulfilledUnits: toFiniteNumber(totalRow?.fulfilledUnits),
       unfulfilledUnits: toFiniteNumber(totalRow?.unfulfilledUnits),
     },
     byBloodGroup: (byGroupRows ?? []).map((row) => ({
@@ -469,171 +470,122 @@ export async function getDemandReport(
         rh: row.rh,
       }),
       unitsRequested: toFiniteNumber(row.unitsRequested),
-      unitsIssued: toFiniteNumber(row.unitsIssued),
-      unitsUsed: toFiniteNumber(row.unitsUsed),
+      fulfilledUnits: toFiniteNumber(row.fulfilledUnits),
       unfulfilledUnits: toFiniteNumber(row.unfulfilledUnits),
+      requestCount: toFiniteNumber(row.requestCount),
     })),
     byDate: (byDateRows ?? []).map((row) => ({
       date: toDateOnlyString(row.date),
       unitsRequested: toFiniteNumber(row.unitsRequested),
-      unitsIssued: toFiniteNumber(row.unitsIssued),
-      unitsUsed: toFiniteNumber(row.unitsUsed),
+      fulfilledUnits: toFiniteNumber(row.fulfilledUnits),
       unfulfilledUnits: toFiniteNumber(row.unfulfilledUnits),
     })),
   }
 }
 
-export type PredictionsByBloodGroupRow = {
-  bloodGroupId: number
-  bloodGroup: PublicBloodGroupSummary | null
-  runCount: number
-  predictedUnits: number
+export type DonorEligibilityReportResult = {
+  report: 'donor-eligibility'
+  totals: Record<string, number>
+  donors: Array<{
+    donorId: number
+    donorNumber: string
+    name: string
+    bloodGroup: PublicBloodGroupSummary | null
+    donationCount: number
+    lastDonationDate: string | null
+    nextEligibleDate: string | null
+    daysUntilEligible: number | null
+    status: string
+    reasons: string[]
+  }>
 }
 
-export type PredictionSummaryRow = {
-  id: number
-  bloodGroupId: number
-  bloodGroup: PublicBloodGroupSummary | null
-  facilityId: number | null
-  forecastStart: string
-  forecastEnd: string
-  predictedUnits: number
-  modelName: string
-  modelVersion: string | null
-  createdAt: string
-}
-
-export type PredictionsReportResult = {
-  report: 'predictions'
-  filters: {
-    from: string | null
-    to: string | null
-    bloodGroupId: number | null
-    bloodGroup: string | null
-  }
-  totals: {
-    runCount: number
-    predictedUnits: number
-  }
-  byBloodGroup: PredictionsByBloodGroupRow[]
-  recent: PredictionSummaryRow[]
-}
-
-export async function getPredictionsReport(
+export async function getDonorEligibilityReport(
   db: Db,
-  query: PredictionsReportQuery,
-): Promise<PredictionsReportResult> {
-  const bloodGroupId = await resolveBloodGroupId(
-    db,
-    query.bloodGroupId,
-    query.bloodGroup,
-  )
-
-  const parts: SQL[] = []
-  if (query.from) {
-    parts.push(gte(aiPredictions.forecastStart, query.from))
-  }
-  if (query.to) {
-    parts.push(lte(aiPredictions.forecastStart, query.to))
-  }
-  if (typeof bloodGroupId === 'number') {
-    parts.push(eq(aiPredictions.bloodGroupId, bloodGroupId))
-  }
-  const where = parts.length > 0 ? and(...parts) : undefined
-
-  const [totalRow] = await db
+  query: DonorEligibilityReportQuery,
+): Promise<DonorEligibilityReportResult> {
+  const bloodGroupId = await resolveBloodGroupId(db, query.bloodGroupId, query.bloodGroup)
+  const rows = await db
     .select({
-      runCount: count(),
-      predictedUnits: sum(aiPredictions.predictedUnits),
-    })
-    .from(aiPredictions)
-    .where(where)
-
-  const byGroupRows = await db
-    .select({
-      bloodGroupId: aiPredictions.bloodGroupId,
+      donorId: donors.id,
+      donorNumber: donors.donorNumber,
+      firstName: donors.firstName,
+      lastName: donors.lastName,
+      active: donors.active,
+      dateOfBirth: donors.dateOfBirth,
+      sex: donors.sex,
+      weightKg: donors.weightKg,
+      address: donors.address,
+      phone: donors.phone,
+      email: donors.email,
+      bloodGroupId: donors.bloodGroupId,
       code: bloodGroups.code,
       abo: bloodGroups.abo,
       rh: bloodGroups.rh,
-      runCount: count(),
-      predictedUnits: sum(aiPredictions.predictedUnits),
+      donationCount: count(donations.id),
+      lastDonationDate: max(donations.donationDate),
     })
-    .from(aiPredictions)
-    .innerJoin(bloodGroups, eq(aiPredictions.bloodGroupId, bloodGroups.id))
-    .where(where)
+    .from(donors)
+    .innerJoin(bloodGroups, eq(donors.bloodGroupId, bloodGroups.id))
+    .leftJoin(donations, eq(donations.donorId, donors.id))
+    .where(typeof bloodGroupId === 'number' ? eq(donors.bloodGroupId, bloodGroupId) : undefined)
     .groupBy(
-      aiPredictions.bloodGroupId,
+      donors.id,
+      donors.donorNumber,
+      donors.firstName,
+      donors.lastName,
+      donors.active,
+      donors.dateOfBirth,
+      donors.sex,
+      donors.weightKg,
+      donors.address,
+      donors.phone,
+      donors.email,
+      donors.bloodGroupId,
       bloodGroups.code,
       bloodGroups.abo,
       bloodGroups.rh,
     )
-    .orderBy(asc(bloodGroups.code))
+    .orderBy(asc(donors.donorNumber))
 
-  const recentRows = await db
-    .select({
-      id: aiPredictions.id,
-      bloodGroupId: aiPredictions.bloodGroupId,
-      code: bloodGroups.code,
-      abo: bloodGroups.abo,
-      rh: bloodGroups.rh,
-      facilityId: aiPredictions.facilityId,
-      forecastStart: aiPredictions.forecastStart,
-      forecastEnd: aiPredictions.forecastEnd,
-      predictedUnits: aiPredictions.predictedUnits,
-      modelName: aiPredictions.modelName,
-      modelVersion: aiPredictions.modelVersion,
-      createdAt: aiPredictions.createdAt,
-    })
-    .from(aiPredictions)
-    .innerJoin(bloodGroups, eq(aiPredictions.bloodGroupId, bloodGroups.id))
-    .where(where)
-    .orderBy(desc(aiPredictions.createdAt), desc(aiPredictions.id))
-    .limit(25)
-
-  return {
-    report: 'predictions',
-    filters: {
-      from: query.from ?? null,
-      to: query.to ?? null,
-      bloodGroupId: bloodGroupId ?? null,
-      bloodGroup: query.bloodGroup ?? null,
-    },
-    totals: {
-      runCount: toFiniteNumber(totalRow?.runCount),
-      predictedUnits: toFiniteNumber(totalRow?.predictedUnits),
-    },
-    byBloodGroup: (byGroupRows ?? []).map((row) => ({
-      bloodGroupId: row.bloodGroupId,
-      bloodGroup: toPublicBloodGroup({
-        id: row.bloodGroupId,
-        code: row.code,
-        abo: row.abo,
-        rh: row.rh,
-      }),
-      runCount: toFiniteNumber(row.runCount),
-      predictedUnits: toFiniteNumber(row.predictedUnits),
-    })),
-    recent: (recentRows ?? []).map((row) => ({
-      id: row.id,
-      bloodGroupId: row.bloodGroupId,
-      bloodGroup: toPublicBloodGroup({
-        id: row.bloodGroupId,
-        code: row.code,
-        abo: row.abo,
-        rh: row.rh,
-      }),
-      facilityId: row.facilityId ?? null,
-      forecastStart: toDateOnlyString(row.forecastStart),
-      forecastEnd: toDateOnlyString(row.forecastEnd),
-      predictedUnits: toFiniteNumber(row.predictedUnits),
-      modelName: row.modelName ?? '',
-      modelVersion: row.modelVersion ?? null,
-      createdAt:
-        row.createdAt instanceof Date
-          ? row.createdAt.toISOString()
-          : String(row.createdAt ?? ''),
-    })),
+  const totals: Record<string, number> = {
+    total: 0,
+    eligible: 0,
+    waitingPeriod: 0,
+    profileIncomplete: 0,
+    otherIneligible: 0,
   }
+  const result = (rows ?? []).map((row) => {
+    const eligibility = calculateDonorEligibility({
+      active: row.active,
+      dateOfBirth: toDateOnlyString(row.dateOfBirth),
+      sex: row.sex,
+      weightKg: row.weightKg === null ? null : Number(row.weightKg),
+      address: row.address,
+      phone: row.phone,
+      email: row.email,
+      lastDonationDate: row.lastDonationDate ? toDateOnlyString(row.lastDonationDate) : null,
+    })
+    totals.total += 1
+    if (eligibility.status === 'ELIGIBLE') totals.eligible += 1
+    else if (eligibility.status === 'WAITING_PERIOD') totals.waitingPeriod += 1
+    else if (eligibility.status === 'PROFILE_INCOMPLETE') totals.profileIncomplete += 1
+    else totals.otherIneligible += 1
+    return {
+      donorId: row.donorId,
+      donorNumber: row.donorNumber,
+      name: `${row.firstName} ${row.lastName}`.trim(),
+      bloodGroup: toPublicBloodGroup({ id: row.bloodGroupId, code: row.code, abo: row.abo, rh: row.rh }),
+      donationCount: toFiniteNumber(row.donationCount),
+      lastDonationDate: row.lastDonationDate ? toDateOnlyString(row.lastDonationDate) : null,
+      nextEligibleDate: eligibility.nextEligibleDate,
+      daysUntilEligible: eligibility.daysUntilEligible,
+      status: eligibility.status,
+      reasons: eligibility.reasons,
+    }
+  })
+
+  return { report: 'donor-eligibility', totals, donors: result }
 }
 
 export type NotificationsByStatusRow = {

@@ -28,3 +28,18 @@ body {
 body {
   margin: 0;
 }
+
+@media print {
+  @page { margin: 14mm; counter-increment: page; }
+  body { background: white !important; color: black !important; }
+  aside, header, nav, form, button, .print\:hidden { display: none !important; }
+  main, section, div { box-shadow: none !important; }
+  section { break-inside: avoid; border-color: #999 !important; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  .print-report-header { display: block !important; margin-bottom: 16px; }
+  .print-report-header h1 { font-size: 18pt; font-weight: 700; }
+  .print-report-header h2 { font-size: 14pt; margin-top: 4px; }
+  .print-report-header p { font-size: 9pt; margin-top: 3px; }
+}

@@ -30,7 +30,7 @@ import {
 } from "~/lib/auth";
 
 export const meta: MetaFunction = () => [
-  { title: "Facilities · NBTS Blood AI" },
+  { title: "Facilities · Blood Donation Management System" },
 ];
 
 type FacilitiesLoaderData =
@@ -250,7 +250,7 @@ export default function AdminFacilitiesPage() {
     <div>
       <PageHeader
         title="Admin · Facilities"
-        description="Create and update healthcare facilities. The API controls who can mutate facility records."
+        description="Create and update healthcare facilities. The server controls who can mutate facility records."
       />
 
       {actionData?.error ? (

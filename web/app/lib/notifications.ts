@@ -74,7 +74,7 @@ export type ListNotificationsResult = {
 };
 
 export type PreviewNotificationsInput = {
-  alertId: number;
+  alertId?: number | null;
   donorIds: number[];
   channel: NotificationChannel;
   message?: string;
@@ -83,14 +83,14 @@ export type PreviewNotificationsInput = {
 export type PreviewNotificationsResult = {
   previews: NotificationPreviewItem[];
   channel: NotificationChannel;
-  alertId: number;
+  alertId: number | null;
   message: string;
   /** True when built locally because preview API was unavailable. */
   localDraft: boolean;
 };
 
 export type SendNotificationsInput = {
-  alertId: number;
+  alertId?: number | null;
   donorIds: number[];
   channel: NotificationChannel;
   message: string;
@@ -438,7 +438,7 @@ export function buildLocalPreview(
   return {
     previews,
     channel: input.channel,
-    alertId: input.alertId,
+    alertId: input.alertId ?? null,
     message,
     localDraft: true,
   };
@@ -484,7 +484,7 @@ export async function previewNotifications(
     alertId:
       typeof data?.alertId === "number" && data.alertId > 0
         ? data.alertId
-        : input.alertId,
+        : input.alertId ?? null,
     message,
     localDraft: false,
   };

@@ -23,34 +23,26 @@ import {
   loadUserAccess,
 } from '../auth/user-access'
 import {
-  RoleAuditActions,
   UserAuditActions,
   recordActivity,
   type UserAuditAction,
 } from '../../services/audit'
 import {
   assignUserRolesBodySchema,
-  createRoleBodySchema,
   createUserBodySchema,
   listUsersQuerySchema,
   patchUserBodySchema,
-  roleIdParamSchema,
-  updateRoleBodySchema,
   userIdParamSchema,
 } from './schemas'
 import {
   assignUserRoles,
-  createRole,
   createUser,
-  getRoleWithPermissions,
   getUserById,
-  listPermissions,
   listRoles,
   listUsers,
   patchUser,
   softDeactivateUser,
   type UserManagementScope,
-  updateRole,
 } from './service'
 
 function clientIp(c: Context<AppHonoEnv>): string | null {
@@ -276,68 +268,3 @@ roleRoutes.get(
     return jsonOk(c, { roles: rolesList })
   },
 )
-
-roleRoutes.get(
-  '/permissions',
-  requirePermission('roles:manage'),
-  async (c) => {
-    const permissionsList = await listPermissions(getDb())
-    return jsonOk(c, { permissions: permissionsList })
-  },
-)
-
-roleRoutes.get('/:id', requirePermission('roles:manage'), async (c) => {
-  const { id } = parseParams(c, roleIdParamSchema)
-  const role = await getRoleWithPermissions(getDb(), id)
-  return jsonOk(c, { role })
-})
-
-/**
- * POST /roles
- * Create role (name + description). Requires roles:manage.
- */
-roleRoutes.post('/', requirePermission('roles:manage'), async (c) => {
-  const body = await parseJsonBody(c, createRoleBodySchema)
-  const role = await createRole(getDb(), body)
-
-  await recordActivity({
-    actorUserId: c.get('user')?.id ?? null,
-    action: RoleAuditActions.CREATE,
-    entityType: 'role',
-    entityId: role.id,
-    metadata: {
-      name: role.name,
-      description: role.description,
-    },
-    requestId: c.get('requestId') ?? null,
-    ipAddress: clientIp(c),
-  })
-
-  return jsonOk(c, { role }, 201)
-})
-
-/**
- * PATCH /roles/:id
- * Update role name/description. Requires roles:manage.
- */
-roleRoutes.patch('/:id', requirePermission('roles:manage'), async (c) => {
-  const { id } = parseParams(c, roleIdParamSchema)
-  const body = await parseJsonBody(c, updateRoleBodySchema)
-  const role = await updateRole(getDb(), id, body)
-
-  await recordActivity({
-    actorUserId: c.get('user')?.id ?? null,
-    action: RoleAuditActions.UPDATE,
-    entityType: 'role',
-    entityId: role.id,
-    metadata: {
-      name: role.name,
-      description: role.description,
-      fieldsUpdated: Object.keys(body ?? {}).join(','),
-    },
-    requestId: c.get('requestId') ?? null,
-    ipAddress: clientIp(c),
-  })
-
-  return jsonOk(c, { role })
-})

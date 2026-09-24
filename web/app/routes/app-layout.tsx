@@ -13,7 +13,7 @@ import { ApiRequestError } from "~/lib/api";
 import { fetchAuthSession, type AuthSession } from "~/lib/auth";
 
 export const meta: MetaFunction = () => [
-  { title: "NBTS Blood AI" },
+  { title: "Blood Donation Management System" },
 ];
 
 type AppLayoutLoaderData =
@@ -22,7 +22,7 @@ type AppLayoutLoaderData =
 
 /**
  * Protected app shell layout.
- * Session comes from GET /auth/me (API cookie), not client-side authority.
+ * Session comes from GET /auth/me (server cookie), not client-side authority.
  */
 export async function clientLoader({ request }: ClientLoaderFunctionArgs) {
   try {
@@ -68,7 +68,7 @@ export default function AppLayout() {
       <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-4 py-16">
         <ErrorState
           title="Session check failed"
-          message={data.message || "Could not reach the authentication API."}
+          message={data.message || "Could not reach the authentication server."}
         />
         <p className="mt-4 text-center text-sm text-nbts-muted">
           <Link to="/login" className="font-medium text-nbts-teal underline">

@@ -31,7 +31,7 @@ import {
 } from "~/lib/donors";
 
 export const meta: MetaFunction = () => [
-  { title: "New donor · NBTS Blood AI" },
+  { title: "New donor · Blood Donation Management System" },
 ];
 
 type DonorNewLoaderData =
@@ -72,7 +72,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include donors:create. The API remains the access authority.",
+        "Your session does not include donors:create. The server remains the access authority.",
     };
   }
 
@@ -97,11 +97,14 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
   }
 
   const formData = await request.formData();
-  const donorNumber = String(formData.get("donorNumber") || "").trim();
   const firstName = String(formData.get("firstName") || "").trim();
   const lastName = String(formData.get("lastName") || "").trim();
   const phone = emptyToNull(String(formData.get("phone") || ""));
   const email = emptyToNull(String(formData.get("email") || ""));
+  const dateOfBirth = String(formData.get("dateOfBirth") || "").trim();
+  const sex = String(formData.get("sex") || "").trim();
+  const address = String(formData.get("address") || "").trim();
+  const weightKg = Number(formData.get("weightKg"));
   const bloodGroupId = parsePositiveInt(
     String(formData.get("bloodGroupId") || ""),
   );
@@ -109,19 +112,24 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
     formData.get("eligibilityStatus"),
   );
 
-  if (!donorNumber || !firstName || !lastName || !Number.isFinite(bloodGroupId)) {
+  if (!firstName || !lastName || !phone || !email || !dateOfBirth || !address || !Number.isFinite(weightKg) || (sex !== "MALE" && sex !== "FEMALE") || !Number.isFinite(bloodGroupId)) {
     return {
-      error: "Donor number, names, and blood group are required.",
+      error: "Names, contact details, birth date, sex, address, weight, and blood group are required.",
     } satisfies DonorNewActionData;
   }
 
   try {
     const donor = await createDonor({
-      donorNumber,
       firstName,
       lastName,
       phone,
       email,
+      dateOfBirth,
+      sex,
+      address,
+      weightKg,
+      smsConsent: formData.get("smsConsent") === "true",
+      emailConsent: formData.get("emailConsent") === "true",
       bloodGroupId,
       eligibilityStatus,
       active: true,
@@ -170,7 +178,7 @@ export default function DonorNewPage() {
             data.message ||
             "You do not have permission to register donors (donors:create)."
           }
-          detail="UI gate only — the API enforces authorization."
+          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to="/donors"
@@ -188,7 +196,7 @@ export default function DonorNewPage() {
     <div>
       <PageHeader
         title="Register donor"
-        description="Fields bind to the donors API. “Potentially eligible” means outreach-ready — not medical clearance."
+        description="Fields bind to the donors server. “Potentially eligible” means outreach-ready — not medical clearance."
         actions={
           <Link
             to="/donors"

@@ -14,14 +14,14 @@ describe("UI state components (error / forbidden / loading)", () => {
     render(
       <ErrorState
         title="Could not load dashboard"
-        message="API unavailable"
+        message="server unavailable"
         detail="NETWORK_ERROR (0)"
       />,
     );
 
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.getByText("Could not load dashboard")).toBeTruthy();
-    expect(screen.getByText("API unavailable")).toBeTruthy();
+    expect(screen.getByText("server unavailable")).toBeTruthy();
     expect(screen.getByText("NETWORK_ERROR (0)")).toBeTruthy();
   });
 

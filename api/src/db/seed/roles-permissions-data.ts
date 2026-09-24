@@ -18,44 +18,14 @@ export interface PermissionSeed {
 /** Stable role definitions (docs/10). */
 export const ROLE_SEEDS: readonly RoleSeed[] = [
   {
-    name: 'System Administrator',
+    name: 'Administrator',
     description:
-      'Super admin with every permission: users, roles, operations, forecasts, alerts, reports, and activity.',
+      'Manages users, fixed role assignment, facilities, operational records, reports, notifications, audit logs, and configuration.',
   },
   {
-    name: 'Facility Manager',
+    name: 'Blood Bank Staff',
     description:
-      'Manage users and operations for the assigned healthcare facility only.',
-  },
-  {
-    name: 'Donor Manager',
-    description:
-      'Manage donor records for the assigned facility or permitted operational scope.',
-  },
-  {
-    name: 'Blood Collector',
-    description:
-      'Record blood donations and view donor context for collection workflows.',
-  },
-  {
-    name: 'Blood Bank Manager',
-    description:
-      'Manage donations, inventory, blood requests, shortage alerts, and operational reporting.',
-  },
-  {
-    name: 'Doctor',
-    description:
-      'Create and monitor facility blood requests and record unit usage.',
-  },
-  {
-    name: 'NBTS Blood Bank Officer',
-    description:
-      'Operate donors, donations, inventory, blood requests, shortage alerts, and notifications.',
-  },
-  {
-    name: 'Authorized Manager',
-    description:
-      'Access dashboards, forecasts, shortage alerts, reports, and notification monitoring.',
+      'Manages donors, donations, inventory, blood requests, stock alerts, notifications, and operational reports.',
   },
   {
     name: 'Registered Donor',
@@ -65,7 +35,7 @@ export const ROLE_SEEDS: readonly RoleSeed[] = [
   {
     name: 'Hospital Staff',
     description:
-      'Facility-scoped hospital operations for donors, donations, inventory usage, and blood requests.',
+      'Uses own-facility inventory and blood requests, issues units, and reads own-facility reports.',
   },
 ] as const
 
@@ -116,42 +86,8 @@ export const PERMISSION_SEEDS: readonly PermissionSeed[] =
 export const ROLE_PERMISSION_MAP: Readonly<
   Record<RoleName, readonly PermissionCode[]>
 > = {
-  'System Administrator': PERMISSION_CODES,
-  'Facility Manager': [
-    'users:manage:facility',
-    'roles:assign:facility',
-    'facilities:read',
-    'donors:read',
-    'donors:create',
-    'donors:update',
-    'donations:read',
-    'donations:create',
-    'inventory:read',
-    'inventory:update',
-    'requests:read',
-    'requests:create',
-    'requests:update',
-    'alerts:read',
-    'alerts:update',
-    'notifications:read',
-    'reports:read',
-  ],
-  'Donor Manager': [
-    'facilities:read',
-    'donors:read',
-    'donors:create',
-    'donors:update',
-    'donations:read',
-    'reports:read',
-  ],
-  'Blood Collector': [
-    'facilities:read',
-    'donors:read',
-    'donations:read',
-    'donations:create',
-    'inventory:read',
-  ],
-  'Blood Bank Manager': [
+  Administrator: PERMISSION_CODES,
+  'Blood Bank Staff': [
     'facilities:read',
     'donors:read',
     'donors:create',
@@ -167,57 +103,17 @@ export const ROLE_PERMISSION_MAP: Readonly<
     'alerts:update',
     'notifications:read',
     'notifications:send',
-    'reports:read',
-  ],
-  Doctor: [
-    'facilities:read',
-    'inventory:read',
-    'inventory:update',
-    'requests:read',
-    'requests:create',
-    'requests:update',
-  ],
-  'NBTS Blood Bank Officer': [
-    'facilities:read',
-    'donors:read',
-    'donors:create',
-    'donors:update',
-    'donations:read',
-    'donations:create',
-    'inventory:read',
-    'inventory:update',
-    'requests:read',
-    'requests:create',
-    'requests:update',
-    'alerts:read',
-    'alerts:update',
-    'notifications:read',
-    'notifications:send',
-  ],
-  'Authorized Manager': [
-    'facilities:read',
-    'donors:read',
-    'donations:read',
-    'inventory:read',
-    'requests:read',
-    'predictions:read',
-    'predictions:run',
-    'alerts:read',
-    'alerts:update',
-    'notifications:read',
     'reports:read',
   ],
   'Registered Donor': [],
   'Hospital Staff': [
     'facilities:read',
-    'donors:create',
-    'donations:read',
-    'donations:create',
     'inventory:read',
     'inventory:update',
     'requests:read',
     'requests:create',
     'requests:update',
+    'reports:read',
   ],
 }
 

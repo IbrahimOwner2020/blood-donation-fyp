@@ -4,30 +4,15 @@ import type { Db } from '../../db/client'
 import { AppError } from '../../lib/errors'
 import type { PermissionCode } from '../../lib/permissions'
 import { parseWithSchema } from '../../lib/validate'
-import {
-  dashboardAlertsQuerySchema,
-  dashboardPredictionsQuerySchema,
-  dashboardSummaryQuerySchema,
-  dashboardTrendQuerySchema,
-} from '../dashboard/schemas'
-import {
-  getDashboardAlerts,
-  getDashboardPredictions,
-  getDashboardSummary,
-  getDemandTrend,
-  getDonationTrend,
-  getInventoryTrend,
-} from '../dashboard/service'
 import { donorIdParamSchema, listDonorsQuerySchema } from '../donors/schemas'
 import { getDonorById, listDonors } from '../donors/service'
 import { donationIdParamSchema, listDonationsQuerySchema } from '../donations/schemas'
 import { getDonationById, listDonations } from '../donations/service'
-import { alertIdParamSchema, listAlertsQuerySchema, patchAlertStatusBodySchema, recalculateAlertsBodySchema } from '../alerts/schemas'
-import { getAlertById, listAlerts } from '../alerts/service'
+import { bloodRequestIdParamSchema, listBloodRequestsQuerySchema } from '../blood-requests/schemas'
+import { getBloodRequestById, listBloodRequests } from '../blood-requests/service'
 import { inventoryIdParamSchema, listInventoryQuerySchema, updateInventoryBodySchema } from '../inventory/schemas'
 import { getInventoryById, listInventory } from '../inventory/service'
 import { previewNotificationsBodySchema, sendNotificationsBodySchema } from '../notifications/schemas'
-import { runPredictionBodySchema } from '../predictions/schemas'
 import {
   createAssistantProposal,
   type AssistantActionName,
@@ -35,6 +20,10 @@ import {
 } from './service'
 import { assistantActionStore } from './action-store'
 import type { AssistantToolSession } from './tool-session-store'
+import {
+  ASSISTANT_NAVIGATION_PATHS,
+  resolveAssistantNavigationTarget,
+} from './navigation'
 
 export type AssistantToolDescriptor = {
   name: string
@@ -107,50 +96,6 @@ function proposalResult(
 }
 
 const toolDefinitions: ToolDefinition[] = [
-  {
-    name: 'dashboard.summary',
-    description: 'Read dashboard KPIs and blood-group inventory distribution.',
-    requiredPermission: 'reports:read',
-    mutates: false,
-    inputSchema: jsonSchema(),
-    schema: dashboardSummaryQuerySchema.passthrough(),
-    handler: async (args, { db }) => getDashboardSummary(db, dashboardSummaryQuerySchema.parse(args)),
-  },
-  {
-    name: 'dashboard.trends',
-    description: 'Read dashboard inventory, donation, and demand trends for the same filters.',
-    requiredPermission: 'reports:read',
-    mutates: false,
-    inputSchema: jsonSchema(),
-    schema: dashboardTrendQuerySchema.passthrough(),
-    handler: async (args, { db }) => {
-      const query = dashboardTrendQuerySchema.parse(args)
-      const [inventory, donations, demand] = await Promise.all([
-        getInventoryTrend(db, query),
-        getDonationTrend(db, query),
-        getDemandTrend(db, query),
-      ])
-      return { inventory, donations, demand }
-    },
-  },
-  {
-    name: 'dashboard.predictions',
-    description: 'Read latest dashboard prediction snapshots.',
-    requiredPermission: 'reports:read',
-    mutates: false,
-    inputSchema: jsonSchema(),
-    schema: dashboardPredictionsQuerySchema.passthrough(),
-    handler: async (args, { db }) => getDashboardPredictions(db, dashboardPredictionsQuerySchema.parse(args)),
-  },
-  {
-    name: 'dashboard.alerts',
-    description: 'Read recent dashboard shortage alerts.',
-    requiredPermission: 'reports:read',
-    mutates: false,
-    inputSchema: jsonSchema(),
-    schema: dashboardAlertsQuerySchema.passthrough(),
-    handler: async (args, { db }) => getDashboardAlerts(db, dashboardAlertsQuerySchema.parse(args)),
-  },
   {
     name: 'donors.search',
     description: 'Search donor records by query, status, blood group, or centre.',
@@ -231,86 +176,22 @@ const toolDefinitions: ToolDefinition[] = [
     },
   },
   {
-    name: 'alerts.search',
-    description: 'Search shortage alerts by blood group, facility, status, or severity.',
-    requiredPermission: 'alerts:read',
+    name: 'blood_requests.search',
+    description: 'Search blood requests by facility, status, priority, or blood group.',
+    requiredPermission: 'requests:read',
     mutates: false,
-    inputSchema: jsonSchema({ status: { type: 'string' }, severity: { type: 'string' }, bloodGroup: { type: 'string' } }),
-    schema: listAlertsQuerySchema.passthrough(),
-    handler: async (args, { db }) => listAlerts(db, listAlertsQuerySchema.parse({ limit: 10, ...args })),
+    inputSchema: jsonSchema({ status: { type: 'string' }, priority: { type: 'string' }, bloodGroupId: { type: 'number' } }),
+    schema: listBloodRequestsQuerySchema.passthrough(),
+    handler: async (args, { db }) => listBloodRequests(db, listBloodRequestsQuerySchema.parse({ limit: 10, ...args })),
   },
   {
-    name: 'alerts.get',
-    description: 'Read one shortage alert by id.',
-    requiredPermission: 'alerts:read',
+    name: 'blood_requests.get',
+    description: 'Read one blood request by id.',
+    requiredPermission: 'requests:read',
     mutates: false,
     inputSchema: jsonSchema({ id: { type: 'number' } }),
     schema: idSchema,
-    handler: async (args, { db }) => getAlertById(db, alertIdParamSchema.parse(args).id),
-  },
-  {
-    name: 'alerts.propose_recalculate',
-    description: 'Create a confirmation proposal to recalculate shortage alerts.',
-    requiredPermission: 'alerts:update',
-    mutates: true,
-    inputSchema: jsonSchema({ predictionId: { type: 'number' }, bloodGroup: { type: 'string' }, facilityId: { type: 'number' } }),
-    schema: recalculateAlertsBodySchema,
-    handler: async (args, context) => {
-      const body = recalculateAlertsBodySchema.parse(args)
-      return proposalResult(
-        context,
-        'alert.recalculate',
-        'alerts:update',
-        'Recalculate shortage alerts',
-        body.bloodGroup ? `Recalculate alerts for ${body.bloodGroup}.` : 'Recalculate alerts from the latest prediction data.',
-        body,
-        'Creates, updates, or resolves shortage alerts according to API gap rules after confirmation.',
-      )
-    },
-  },
-  {
-    name: 'alerts.propose_status_update',
-    description: 'Create a confirmation proposal to change a shortage alert status.',
-    requiredPermission: 'alerts:update',
-    mutates: true,
-    inputSchema: jsonSchema({ alertId: { type: 'number' }, status: { type: 'string' } }),
-    schema: z.object({
-      alertId: z.coerce.number().int().positive(),
-      status: patchAlertStatusBodySchema.shape.status,
-    }),
-    handler: async (args, context) => {
-      const alertId = z.coerce.number().int().positive().parse(args.alertId)
-      const body = patchAlertStatusBodySchema.parse(args)
-      return proposalResult(
-        context,
-        'alert.status',
-        'alerts:update',
-        `Set alert #${alertId} to ${body.status}`,
-        `Change shortage alert #${alertId} status to ${body.status}.`,
-        { alertId, status: body.status },
-        'Updates the alert lifecycle after confirmation.',
-      )
-    },
-  },
-  {
-    name: 'predictions.propose_run',
-    description: 'Create a confirmation proposal to run a blood-demand forecast.',
-    requiredPermission: 'predictions:run',
-    mutates: true,
-    inputSchema: jsonSchema({ bloodGroup: { type: 'string' }, horizonDays: { type: 'number' }, facilityId: { type: 'number' } }),
-    schema: runPredictionBodySchema,
-    handler: async (args, context) => {
-      const body = runPredictionBodySchema.parse(args)
-      return proposalResult(
-        context,
-        'prediction.run',
-        'predictions:run',
-        `Run ${body.horizonDays ?? 7}-day forecast for ${body.bloodGroup}`,
-        `Create a new prediction for blood group ${body.bloodGroup}.`,
-        body,
-        'Calls the prediction service and evaluates shortage gaps after confirmation.',
-      )
-    },
+    handler: async (args, { db }) => getBloodRequestById(db, bloodRequestIdParamSchema.parse(args).id),
   },
   {
     name: 'notifications.propose_preview',
@@ -356,24 +237,29 @@ const toolDefinitions: ToolDefinition[] = [
     name: 'navigation.propose',
     description: 'Return a permitted in-app navigation target.',
     mutates: false,
-    inputSchema: jsonSchema({ path: { type: 'string' }, label: { type: 'string' } }),
+    inputSchema: jsonSchema({
+      path: { type: 'string', enum: [...ASSISTANT_NAVIGATION_PATHS] },
+      label: { type: 'string' },
+    }),
     schema: z.object({
       path: z.string().trim().min(1).max(300),
       label: z.string().trim().min(1).max(120).optional(),
-      requiredPermission: z.string().trim().min(1).max(80).optional(),
     }),
     handler: async (args, context) => {
       const parsed = z.object({
         path: z.string().trim().min(1).max(300),
         label: z.string().trim().min(1).max(120).optional(),
-        requiredPermission: z.string().trim().min(1).max(80).optional(),
       }).parse(args)
-      ensureToolPermission(context.session, parsed.requiredPermission as PermissionCode | undefined)
+      const target = resolveAssistantNavigationTarget(parsed.path)
+      if (!target) {
+        throw AppError.badRequest('Assistant navigation target is not available')
+      }
+      ensureToolPermission(context.session, target.permission)
       return {
         type: 'navigation',
-        path: parsed.path,
-        message: `Opening ${parsed.label ?? parsed.path}.`,
-        requiredPermission: parsed.requiredPermission,
+        path: target.path,
+        message: `Opening ${parsed.label ?? target.label}.`,
+        ...(target.permission ? { requiredPermission: target.permission } : {}),
       }
     },
   },

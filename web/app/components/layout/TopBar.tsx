@@ -33,11 +33,11 @@ export function TopBar({ session, onMenuClick }: TopBarProps) {
             N
           </span>
           <span className="hidden truncate text-sm font-semibold tracking-wide sm:inline">
-            NBTS Blood AI
+            Blood Donation Management System
           </span>
         </Link>
         <span className="hidden text-xs text-nbts-muted md:inline">
-          Supply prediction &amp; donor notification
+          Donor, inventory &amp; notification operations
         </span>
       </div>
 

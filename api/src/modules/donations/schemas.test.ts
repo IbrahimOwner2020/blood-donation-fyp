@@ -34,6 +34,7 @@ describe('createDonationBodySchema', () => {
       donationCentreId: 2,
       bloodGroupId: 3,
       donationDate: '2026-09-02',
+      weightKgAtDonation: 60,
       notes: '  first unit  ',
     })
     expect(parsed.units).toBe(1)
@@ -48,6 +49,7 @@ describe('createDonationBodySchema', () => {
         donationCentreId: 2,
         bloodGroupId: 3,
         donationDate: '2026-02-30',
+        weightKgAtDonation: 60,
       }).success,
     ).toBe(false)
 
@@ -57,6 +59,7 @@ describe('createDonationBodySchema', () => {
         donationCentreId: 2,
         bloodGroupId: 3,
         donationDate: '2026-09-02',
+        weightKgAtDonation: 60,
         units: 0,
       }).success,
     ).toBe(false)
@@ -68,6 +71,7 @@ describe('createDonationBodySchema', () => {
       donationCentreId: 2,
       bloodGroupId: 3,
       donationDate: '2026-09-02',
+      weightKgAtDonation: 60,
       units: 2,
       facilityId: null,
     })
@@ -120,6 +124,8 @@ describe('toPublicDonation', () => {
         donationCentreId: 2,
         bloodGroupId: 3,
         donationDate: '2026-09-02',
+        category: 'VOLUNTARY',
+        weightKgAtDonation: '60.00',
         units: 2,
         notes: null,
         createdBy: 5,

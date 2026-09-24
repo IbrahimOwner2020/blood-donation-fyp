@@ -9,6 +9,11 @@ export type {
 export { redactEmail, redactPhone } from './redact'
 
 export {
+  NextSmsProvider,
+  type NextSmsConfig,
+} from './providers/nextsms-provider'
+
+export {
   MockSmsProvider,
   type MockSmsProviderOptions,
   type MockSmsRecord,

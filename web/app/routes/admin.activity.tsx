@@ -35,7 +35,7 @@ import {
 } from "~/lib/auth";
 
 export const meta: MetaFunction = () => [
-  { title: "Activity · NBTS Blood AI" },
+  { title: "Activity · Blood Donation Management System" },
 ];
 
 type ActivityFilters = {
@@ -106,7 +106,7 @@ function parseFilters(url: URL): ActivityFilters {
   };
 }
 
-/** Accept datetime-local or ISO query values for the API. */
+/** Accept datetime-local or ISO query values for the server. */
 function toApiDateTime(value: string = ""): string {
   const raw = value.trim();
   if (!raw) {
@@ -140,7 +140,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include activity:read. The API remains the access authority.",
+        "Your session does not include activity:read. The server remains the access authority.",
       filters,
     };
   }
@@ -248,13 +248,13 @@ export default function AdminActivityPage() {
       <div>
         <PageHeader
           title="Admin · Activity"
-          description="Audit trail for auth and admin actions. Sensitive values stay redacted per API policy."
+          description="Audit trail for auth and admin actions. Sensitive values stay redacted per server policy."
         />
         <ForbiddenState
           title="Missing permission"
           message={
             loaderData.message ||
-            "activity:read is required to view the audit trail. The API remains the authority."
+            "activity:read is required to view the audit trail. The server remains the authority."
           }
           detail="UI gate: activity:read"
         />
@@ -309,7 +309,7 @@ export default function AdminActivityPage() {
     <div>
       <PageHeader
         title="Admin · Activity"
-        description="Audit trail for auth and admin actions. Metadata is redacted by the API before display."
+        description="Audit trail for auth and admin actions. Metadata is redacted by the server before display."
       />
 
       <Form

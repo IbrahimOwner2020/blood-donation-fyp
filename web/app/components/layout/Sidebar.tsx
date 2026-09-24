@@ -21,9 +21,6 @@ const PRIMARY_NAV: NavItem[] = [
   { to: "/donations", label: "Donations", permission: UI_PERMISSIONS.donationsRead },
   { to: "/inventory", label: "Inventory", permission: UI_PERMISSIONS.inventoryRead },
   { to: "/blood-requests", label: "Requests", permission: UI_PERMISSIONS.requestsRead },
-  { to: "/predictions", label: "Forecasts", permission: UI_PERMISSIONS.predictionsRead },
-  { to: "/ai-reports", label: "AI Reports", permission: UI_PERMISSIONS.predictionsRead },
-  { to: "/alerts", label: "Alerts", permission: UI_PERMISSIONS.alertsRead },
   { to: "/notifications", label: "Notify", permission: UI_PERMISSIONS.notificationsRead },
   { to: "/reports", label: "Reports", permission: UI_PERMISSIONS.reportsRead },
 ];
@@ -44,14 +41,6 @@ const ADMIN_NAV: NavItem[] = [
       UI_PERMISSIONS.facilitiesRead,
       UI_PERMISSIONS.facilitiesCreate,
       UI_PERMISSIONS.facilitiesUpdate,
-    ],
-  },
-  {
-    to: "/admin/roles",
-    label: "Roles",
-    anyPermission: [
-      UI_PERMISSIONS.rolesManage,
-      UI_PERMISSIONS.rolesAssignFacility,
     ],
   },
   { to: "/admin/activity", label: "Activity", permission: UI_PERMISSIONS.activityRead },
@@ -153,7 +142,7 @@ export function Sidebar({ session, open = false, onClose }: SidebarProps) {
           ) : null}
         </nav>
         <p className="shrink-0 border-t border-white/10 px-3 py-3 text-[11px] text-slate-400">
-          Presentation shell - API is authority
+          Blood Donation Management System
         </p>
       </aside>
     </>

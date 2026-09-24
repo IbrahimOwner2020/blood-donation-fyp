@@ -11,23 +11,20 @@ import {
     requestLoggerMiddleware,
 } from './middleware'
 import { activityLogRoutes } from './modules/activity-logs'
-import { aiAnalysisRoutes } from './modules/ai-analysis'
 import { assistantRoutes } from './modules/assistant'
 import { authRoutes } from './modules/auth'
 import { bloodRequestRoutes } from './modules/blood-requests'
-import { demandRoutes } from './modules/demand'
 import { donationCentreRoutes } from './modules/donation-centres'
 import { donationRoutes } from './modules/donations'
 import { donorRoutes } from './modules/donors'
 import { facilitiesRoutes } from './modules/facilities'
 import { inventoryRoutes } from './modules/inventory'
+import { inventoryAlertRoutes } from './modules/inventory-alerts'
 import { meDonorRoutes } from './modules/me-donor'
-import { predictionRoutes } from './modules/predictions'
-import { alertRoutes } from './modules/alerts'
 import { notificationRoutes } from './modules/notifications'
-import { dashboardRoutes } from './modules/dashboard'
 import { reportRoutes } from './modules/reports'
 import { roleRoutes, userRoutes } from './modules/users'
+import { publicChatRoutes } from './modules/public-chat'
 
 const env = getEnv()
 
@@ -41,7 +38,7 @@ app.onError(errorHandler)
 
 app.get('/', (c) => {
     return jsonOk(c, {
-        service: 'nbts-blood-ai-api',
+        service: 'blood-donation-management-system',
         status: 'ok',
     })
 })
@@ -67,6 +64,8 @@ v1.get('/health', (c) => {
     })
 })
 
+v1.route('/public/chat', publicChatRoutes)
+
 v1.route('/auth', authRoutes)
 v1.route('/me/donor', meDonorRoutes)
 v1.route('/users', userRoutes)
@@ -80,22 +79,13 @@ v1.route('/donors', donorRoutes)
 v1.route('/donations', donationRoutes)
 /** Inventory list/summary/expiry + status PATCH — owned by inventory-api. */
 v1.route('/inventory', inventoryRoutes)
+v1.route('/inventory-alerts', inventoryAlertRoutes)
 /** Healthcare facilities — owned by facilities-api (do not collide with other domain mounts). */
 v1.route('/facilities', facilitiesRoutes)
 /** Blood requests + status machine — owned by blood-requests-api (demand_records is separate). */
 v1.route('/blood-requests', bloodRequestRoutes)
-/** Demand time-series for AI history/series — owned by demand-records. */
-v1.route('/demand-records', demandRoutes)
-/** AI forecast run + persisted predictions — owned by predictions-api. */
-v1.route('/predictions', predictionRoutes)
-/** Daily AI supply analysis reports and cron entrypoint. */
-v1.route('/ai-analysis', aiAnalysisRoutes)
-/** Shortage alerts from predicted gap — owned by shortage-alerts. */
-v1.route('/alerts', alertRoutes)
 /** Donor notification preview/send/history — owned by notifications-api. */
 v1.route('/notifications', notificationRoutes)
-/** Dashboard KPIs / trends / prediction snapshot / alerts — owned by dashboard-api. */
-v1.route('/dashboard', dashboardRoutes)
 /** Operational reports — owned by reports-api-web (not /dashboard/*). */
 v1.route('/reports', reportRoutes)
 /** Permissioned app assistant — proposes then confirms API-owned actions. */

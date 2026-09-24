@@ -63,28 +63,36 @@ describe('listDonorsQuerySchema', () => {
 describe('createDonorBodySchema', () => {
   test('defaults eligibility UNKNOWN and active true', () => {
     const parsed = createDonorBodySchema.parse({
-      donorNumber: 'DN-001',
       firstName: 'Amina',
       lastName: 'Juma',
+      phone: '0712345678',
+      email: 'amina@example.com',
+      dateOfBirth: '1990-01-01',
+      sex: 'FEMALE',
+      address: 'Dodoma',
+      weightKg: 60,
       bloodGroupId: 1,
     })
     expect(parsed.eligibilityStatus).toBe('UNKNOWN')
     expect(parsed.active).toBe(true)
-    expect(parsed.phone).toBeUndefined()
-    expect(parsed.email).toBeUndefined()
+    expect(parsed.donorNumber).toBeUndefined()
+    expect(parsed.smsConsent).toBe(false)
+    expect(parsed.emailConsent).toBe(false)
   })
 
-  test('normalizes empty phone/email to null', () => {
-    const parsed = createDonorBodySchema.parse({
-      donorNumber: 'DN-002',
+  test('requires phone and email for a new donor', () => {
+    const result = createDonorBodySchema.safeParse({
       firstName: 'Amina',
       lastName: 'Juma',
       bloodGroupId: 1,
       phone: '   ',
       email: '',
+      dateOfBirth: '1990-01-01',
+      sex: 'FEMALE',
+      address: 'Dodoma',
+      weightKg: 60,
     })
-    expect(parsed.phone).toBeNull()
-    expect(parsed.email).toBeNull()
+    expect(result.success).toBe(false)
   })
 
   test('accepts POTENTIALLY_ELIGIBLE as operational status only', () => {
@@ -96,6 +104,10 @@ describe('createDonorBodySchema', () => {
       eligibilityStatus: 'POTENTIALLY_ELIGIBLE',
       phone: '+255700000001',
       email: 'amina@example.com',
+      dateOfBirth: '1990-01-01',
+      sex: 'FEMALE',
+      address: 'Dodoma',
+      weightKg: 60,
     })
     expect(parsed.eligibilityStatus).toBe('POTENTIALLY_ELIGIBLE')
     expect(parsed.phone).toBe('+255700000001')
@@ -108,6 +120,12 @@ describe('createDonorBodySchema', () => {
         donorNumber: '  ',
         firstName: 'Amina',
         lastName: 'Juma',
+        phone: '0712345678',
+        email: 'amina@example.com',
+        dateOfBirth: '1990-01-01',
+        sex: 'FEMALE',
+        address: 'Dodoma',
+        weightKg: 60,
         bloodGroupId: 1,
       }).success,
     ).toBe(false)
@@ -136,6 +154,12 @@ describe('toPublicDonor', () => {
         lastName: 'Juma',
         phone: null,
         email: null,
+        dateOfBirth: null,
+        sex: null,
+        address: null,
+        weightKg: null,
+        smsConsent: false,
+        emailConsent: false,
         bloodGroupId: 3,
         eligibilityStatus: 'POTENTIALLY_ELIGIBLE',
         active: true,

@@ -1,6 +1,6 @@
 /**
  * Shared Recharts helpers — NBTS palette, date ticks, tooltip chrome.
- * Values remain API-owned; this only formats presentation.
+ * Values remain server-owned; this only formats presentation.
  */
 
 import type { ReactNode } from "react";

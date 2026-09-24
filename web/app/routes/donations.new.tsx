@@ -9,6 +9,7 @@ import {
   type ClientLoaderFunctionArgs,
   type MetaFunction,
 } from "react-router";
+import { useState } from "react";
 
 import { ErrorState } from "~/components/ui/ErrorState";
 import { ForbiddenState } from "~/components/ui/ForbiddenState";
@@ -41,7 +42,7 @@ import {
 } from "~/lib/donations";
 
 export const meta: MetaFunction = () => [
-  { title: "Record donation · NBTS Blood AI" },
+  { title: "Record donation · Blood Donation Management System" },
 ];
 
 type DonationNewLoaderData =
@@ -87,7 +88,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include donations:create. The API remains the access authority.",
+        "Your session does not include donations:create. The server remains the access authority.",
     };
   }
 
@@ -121,12 +122,21 @@ export async function clientLoader({
                 lastName: "donor",
                 phone: null,
                 email: null,
+                dateOfBirth: null,
+                sex: null,
+                address: null,
+                weightKg: null,
+                smsConsent: false,
+                emailConsent: false,
                 bloodGroupId: Number.isFinite(bloodGroupPrefill)
                   ? bloodGroupPrefill
                   : 0,
                 bloodGroup: null,
                 eligibilityStatus: "UNKNOWN",
                 active: true,
+                donationCount: 0,
+                lastDonationDate: null,
+                preliminaryEligibility: { status: "PROFILE_INCOMPLETE", reasons: [], profileComplete: false, age: null, nextEligibleDate: null, daysUntilEligible: null },
               } satisfies PublicDonor,
             ],
       centres: centres ?? [],
@@ -180,6 +190,7 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
   }
 
   const formData = await request.formData();
+  const donorMode = String(formData.get("donorMode") || "existing");
   const donorId = parsePositiveInt(String(formData.get("donorId") || ""));
   const donationCentreId = parsePositiveInt(
     String(formData.get("donationCentreId") || ""),
@@ -188,6 +199,8 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
     String(formData.get("bloodGroupId") || ""),
   );
   const donationDate = String(formData.get("donationDate") || "").trim();
+  const category = String(formData.get("category") || "VOLUNTARY");
+  const weightKgAtDonation = Number(formData.get("weightKgAtDonation"));
   const unitsRaw = Number.parseInt(
     String(formData.get("units") || "1").trim(),
     10,
@@ -202,14 +215,16 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
       : parsePositiveInt(facilityRaw);
 
   if (
-    !Number.isFinite(donorId) ||
+    (donorMode === "existing" && !Number.isFinite(donorId)) ||
     !Number.isFinite(donationCentreId) ||
     !Number.isFinite(bloodGroupId) ||
-    !isValidDateOnly(donationDate)
+    !isValidDateOnly(donationDate) ||
+    !Number.isFinite(weightKgAtDonation) || weightKgAtDonation <= 0 ||
+    (category !== "VOLUNTARY" && category !== "FAMILY_REPLACEMENT")
   ) {
     return {
       error:
-        "Donor, donation centre, blood group, and a valid donation date are required.",
+        "Donor, donation centre, blood group, category, weight, and a valid donation date are required.",
     } satisfies DonationNewActionData;
   }
 
@@ -220,11 +235,35 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
   }
 
   try {
+    let newDonor;
+    if (donorMode === "new") {
+      const sex = String(formData.get("newSex") || "");
+      const newWeightKg = Number(formData.get("newWeightKg"));
+      newDonor = {
+        firstName: String(formData.get("newFirstName") || "").trim(),
+        lastName: String(formData.get("newLastName") || "").trim(),
+        phone: String(formData.get("newPhone") || "").trim(),
+        email: String(formData.get("newEmail") || "").trim(),
+        dateOfBirth: String(formData.get("newDateOfBirth") || "").trim(),
+        sex: sex as "MALE" | "FEMALE",
+        address: String(formData.get("newAddress") || "").trim(),
+        weightKg: newWeightKg,
+        smsConsent: formData.get("newSmsConsent") === "true",
+        emailConsent: formData.get("newEmailConsent") === "true",
+        bloodGroupId,
+      };
+      if (!newDonor.firstName || !newDonor.lastName || !newDonor.phone || !newDonor.email || !newDonor.dateOfBirth || !newDonor.address || !Number.isFinite(newWeightKg) || (sex !== "MALE" && sex !== "FEMALE")) {
+        return { error: "Complete every required field for the new donor." } satisfies DonationNewActionData;
+      }
+    }
     const donation = await createDonation({
-      donorId,
+      donorId: donorMode === "existing" ? donorId : undefined,
+      newDonor,
       donationCentreId,
       bloodGroupId,
       donationDate,
+      category: category as "VOLUNTARY" | "FAMILY_REPLACEMENT",
+      weightKgAtDonation,
       units,
       notes,
       facilityId: Number.isFinite(facilityId) ? facilityId : null,
@@ -257,13 +296,14 @@ export default function DonationNewPage() {
   const navigation = useNavigation();
   const busy =
     navigation.state === "submitting" || navigation.state === "loading";
+  const [donorMode, setDonorMode] = useState<"existing" | "new">("existing");
 
   if (data?.status === "forbidden") {
     return (
       <div>
         <PageHeader
           title="Record donation"
-          description="Create a donation record. Linked inventory units are created by the API."
+          description="Create a donation record. Linked inventory units are created by the server."
         />
         <ForbiddenState
           title="Create access restricted"
@@ -271,7 +311,7 @@ export default function DonationNewPage() {
             data.message ||
             "You do not have permission to record donations (donations:create)."
           }
-          detail="UI gate only — the API enforces authorization."
+          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to="/donations"
@@ -290,7 +330,7 @@ export default function DonationNewPage() {
       <div>
         <PageHeader
           title="Record donation"
-          description="Create a donation record. Linked inventory units are created by the API."
+          description="Create a donation record. Linked inventory units are created by the server."
         />
         <ErrorState
           title="Could not load form"
@@ -318,7 +358,7 @@ export default function DonationNewPage() {
     <div>
       <PageHeader
         title="Record donation"
-        description="Fields bind to POST /donations. Stock totals are not computed in the browser."
+        description="Select an existing donor or register a new donor as part of the donation. Eligibility is checked before the record is saved."
         actions={
           <Link
             to="/donations"
@@ -358,6 +398,12 @@ export default function DonationNewPage() {
         className="max-w-2xl rounded-lg border border-nbts-border bg-nbts-panel p-5"
       >
         <div className="grid gap-4 sm:grid-cols-2">
+          <fieldset className="flex gap-4 sm:col-span-2">
+            <legend className="mb-2 text-sm font-medium text-nbts-ink">Donor source</legend>
+            <label className="flex items-center gap-2 text-sm"><input type="radio" name="donorMode" value="existing" checked={donorMode === "existing"} onChange={() => setDonorMode("existing")} /> Existing donor</label>
+            <label className="flex items-center gap-2 text-sm"><input type="radio" name="donorMode" value="new" checked={donorMode === "new"} onChange={() => setDonorMode("new")} /> New donor</label>
+          </fieldset>
+          {donorMode === "existing" ? (
           <label className="flex flex-col gap-1 text-sm sm:col-span-2">
             <span className="font-medium text-nbts-ink">Donor</span>
             <select
@@ -379,6 +425,21 @@ export default function DonationNewPage() {
               ))}
             </select>
           </label>
+          ) : (
+            <fieldset className="grid gap-4 rounded border border-nbts-border p-4 sm:col-span-2 sm:grid-cols-2">
+              <legend className="px-1 text-sm font-semibold">New donor details</legend>
+              <input name="newFirstName" required className={fieldClass} placeholder="First name" />
+              <input name="newLastName" required className={fieldClass} placeholder="Last name" />
+              <input name="newPhone" required className={fieldClass} placeholder="Phone, e.g. 0712345678" />
+              <input name="newEmail" required type="email" className={fieldClass} placeholder="Email" />
+              <input name="newDateOfBirth" required type="date" className={fieldClass} aria-label="Date of birth" />
+              <select name="newSex" required className={fieldClass} defaultValue=""><option value="" disabled>Sex</option><option value="MALE">Male</option><option value="FEMALE">Female</option></select>
+              <input name="newWeightKg" required type="number" min={1} max={300} step="0.1" className={fieldClass} placeholder="Current weight (kg)" />
+              <input name="newAddress" required className={fieldClass} placeholder="Address" />
+              <label className="flex items-center gap-2 text-sm"><input name="newSmsConsent" type="checkbox" value="true" /> SMS reminders</label>
+              <label className="flex items-center gap-2 text-sm"><input name="newEmailConsent" type="checkbox" value="true" /> Email reminders</label>
+            </fieldset>
+          )}
 
           <label className="flex flex-col gap-1 text-sm sm:col-span-2">
             <span className="font-medium text-nbts-ink">Donation centre</span>
@@ -416,6 +477,19 @@ export default function DonationNewPage() {
           </label>
 
           <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-nbts-ink">Donation category</span>
+            <select name="category" required defaultValue="VOLUNTARY" className={fieldClass}>
+              <option value="VOLUNTARY">Voluntary</option>
+              <option value="FAMILY_REPLACEMENT">Family replacement</option>
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-nbts-ink">Weight at donation (kg)</span>
+            <input name="weightKgAtDonation" type="number" min={1} max={300} step="0.1" required className={fieldClass} />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-nbts-ink">Donation date</span>
             <input
               name="donationDate"
@@ -438,7 +512,7 @@ export default function DonationNewPage() {
               className={fieldClass}
             />
             <span className="text-xs text-nbts-muted">
-              Each unit creates a linked inventory row (API).
+              Each unit creates a linked inventory row (server).
             </span>
           </label>
 
@@ -472,7 +546,7 @@ export default function DonationNewPage() {
         <div className="mt-6 flex flex-wrap gap-2">
           <button
             type="submit"
-            disabled={busy || donors.length === 0 || centres.length === 0}
+            disabled={busy || (donorMode === "existing" && donors.length === 0) || centres.length === 0}
             className="rounded bg-nbts-blood px-4 py-2.5 text-sm font-semibold text-white hover:bg-nbts-blood-dark disabled:opacity-60"
           >
             {busy ? "Saving…" : "Record donation"}

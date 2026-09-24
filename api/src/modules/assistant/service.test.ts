@@ -14,10 +14,6 @@ const allPermissions = [
   'reports:read',
   'donors:read',
   'donations:read',
-  'alerts:read',
-  'alerts:update',
-  'predictions:read',
-  'predictions:run',
   'notifications:read',
   'notifications:send',
   'inventory:read',
@@ -26,57 +22,61 @@ const allPermissions = [
   'users:manage',
   'roles:manage',
   'activity:read',
+  'facilities:read',
 ]
 
 describe('handleAssistantMessage', () => {
   test('returns navigation only when the target permission is present', async () => {
     const allowed = await handleAssistantMessage(db, {
-      message: 'open alerts',
+      message: 'open reports',
     }, allPermissions)
 
     expect(allowed.type).toBe('navigation')
     if (allowed.type === 'navigation') {
-      expect(allowed.path).toBe('/alerts')
-      expect(allowed.requiredPermission).toBe('alerts:read')
+      expect(allowed.path).toBe('/reports')
+      expect(allowed.requiredPermission).toBe('reports:read')
     }
 
     const denied = await handleAssistantMessage(db, {
-      message: 'open alerts',
-    }, ['reports:read'])
+      message: 'open reports',
+    }, [])
 
     expect(denied).toEqual({
       type: 'permission_denied',
-      requiredPermission: 'alerts:read',
+      requiredPermission: 'reports:read',
       message:
-        'Your account does not include alerts:read, so I cannot perform that action.',
+        'Your account does not include reports:read, so I cannot perform that action.',
     })
   })
 
-  test('proposes forecast actions with the required permission and payload', async () => {
+  test('falls back to the canonical facility route when AI returns an unknown path', async () => {
+    const store = new AssistantToolSessionStore({ now: () => 10 })
+    const toolSession = store.create({
+      userId: 1,
+      sessionId: 'session-a',
+      permissions: ['facilities:read'],
+    })
+
     const result = await handleAssistantMessage(db, {
-      message: 'run a 14 day forecast for O+',
-    }, allPermissions)
+      message: 'open facilities',
+    }, ['facilities:read'], {
+      toolSession,
+      toolsUrl: 'http://api.test/api/v1/assistant/tools',
+      aiClient: {
+        chat: async () => ({
+          type: 'navigation',
+          message: 'Opening facilities.',
+          path: '/facilities',
+        }),
+      },
+    })
 
-    expect(result.type).toBe('action_proposal')
-    if (result.type === 'action_proposal') {
-      expect(result.proposal.action).toBe('prediction.run')
-      expect(result.proposal.requiredPermission).toBe('predictions:run')
-      expect(result.proposal.payload).toMatchObject({
-        bloodGroup: 'O+',
-        horizonDays: 14,
-      })
-    }
-  })
-
-  test('does not propose mutation actions without permission', async () => {
-    const result = await handleAssistantMessage(db, {
-      message: 'resolve alert 42',
-    }, ['alerts:read'])
-
-    expect(result.type).toBe('permission_denied')
-    if (result.type === 'permission_denied') {
-      expect(result.requiredPermission).toBe('alerts:update')
-    }
+    expect(result).toEqual({
+      type: 'navigation',
+      path: '/admin/facilities',
+      requiredPermission: 'facilities:read',
+      message: 'Opening facilities.',
+    })
   })
 
   test('proposes notification previews without sending', async () => {
@@ -194,12 +194,12 @@ describe('handleAssistantMessage', () => {
 describe('AssistantActionStore', () => {
   const proposal: AssistantActionProposal = {
     id: 'act_test_action',
-    action: 'alert.status',
-    title: 'Resolve alert #1',
-    description: 'Change shortage alert #1 status to RESOLVED.',
-    requiredPermission: 'alerts:update',
-    payload: { alertId: 1, status: 'RESOLVED' },
-    effect: 'Updates the alert lifecycle and records an audit event.',
+    action: 'inventory.update',
+    title: 'Reserve inventory unit #1',
+    description: 'Change inventory unit #1 status to RESERVED.',
+    requiredPermission: 'inventory:update',
+    payload: { inventoryId: 1, status: 'RESERVED' },
+    effect: 'Updates inventory after confirmation and records an audit event.',
   }
 
   test('returns actions only for the creating user and session', () => {
@@ -235,14 +235,8 @@ describe('assistant tool sessions and tools', () => {
     const names = tools.map((tool) => tool.name).sort()
 
     expect(names).toEqual([
-      'alerts.get',
-      'alerts.propose_recalculate',
-      'alerts.propose_status_update',
-      'alerts.search',
-      'dashboard.alerts',
-      'dashboard.predictions',
-      'dashboard.summary',
-      'dashboard.trends',
+      'blood_requests.get',
+      'blood_requests.search',
       'donations.get',
       'donations.search',
       'donors.get',
@@ -253,7 +247,6 @@ describe('assistant tool sessions and tools', () => {
       'navigation.propose',
       'notifications.propose_preview',
       'notifications.propose_send',
-      'predictions.propose_run',
     ])
   })
 
@@ -283,6 +276,42 @@ describe('assistant tool sessions and tools', () => {
       inventoryId: 1,
       status: 'RESERVED',
     })).rejects.toThrow('Assistant tool requires inventory:update')
+  })
+
+  test('navigation tool only permits real application routes', async () => {
+    const session = {
+      token: 'ast_test',
+      userId: 1,
+      sessionId: 'session-a',
+      permissions: ['facilities:read'],
+      requestId: null,
+      expiresAt: 100,
+    }
+
+    await expect(callAssistantTool(db, session, 'navigation.propose', {
+      path: '/does-not-exist',
+      label: 'missing',
+    })).rejects.toThrow()
+
+    await expect(callAssistantTool(db, session, 'navigation.propose', {
+      path: '/facilities',
+      label: 'facilities',
+    })).resolves.toEqual({
+      type: 'navigation',
+      path: '/admin/facilities',
+      message: 'Opening facilities.',
+      requiredPermission: 'facilities:read',
+    })
+
+    await expect(callAssistantTool(db, session, 'navigation.propose', {
+      path: '/admin/facilities',
+      label: 'facilities',
+    })).resolves.toEqual({
+      type: 'navigation',
+      path: '/admin/facilities',
+      message: 'Opening facilities.',
+      requiredPermission: 'facilities:read',
+    })
   })
 
   test('tool list route requires and honors bearer tool session', async () => {

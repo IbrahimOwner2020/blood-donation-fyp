@@ -1,6 +1,6 @@
 /**
  * Presentation-only UI gate helper.
- * Hiding controls is not authorization — the API must reject unauthorized actions.
+ * Hiding controls is not authorization — the server must reject unauthorized actions.
  */
 
 import type { ReactNode } from "react";

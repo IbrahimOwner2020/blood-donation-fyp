@@ -24,29 +24,36 @@ describe('loginBodySchema', () => {
 describe('registerDonorBodySchema', () => {
   test('normalizes donor registration account fields', () => {
     const parsed = registerDonorBodySchema.parse({
-      name: '  Asha Mwangi  ',
       email: 'ASHA@example.local',
       password: 'ChangeMe123!',
       firstName: ' Asha ',
       lastName: ' Mwangi ',
       phone: ' +255711111111 ',
+      dateOfBirth: '1990-01-01',
+      sex: 'FEMALE',
+      address: 'Dodoma',
+      weightKg: 60,
       bloodGroupId: 7,
     })
 
     expect(parsed).toEqual({
-      name: 'Asha Mwangi',
       email: 'asha@example.local',
       password: 'ChangeMe123!',
       firstName: 'Asha',
       lastName: 'Mwangi',
       phone: '+255711111111',
+      dateOfBirth: '1990-01-01',
+      sex: 'FEMALE',
+      address: 'Dodoma',
+      weightKg: 60,
+      smsConsent: false,
+      emailConsent: false,
       bloodGroupId: 7,
     })
   })
 
   test('rejects short password and missing blood group', () => {
     const result = registerDonorBodySchema.safeParse({
-      name: 'Asha Mwangi',
       email: 'asha@example.local',
       password: 'short',
       firstName: 'Asha',

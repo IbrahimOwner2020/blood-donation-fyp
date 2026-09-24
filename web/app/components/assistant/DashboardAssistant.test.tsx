@@ -119,6 +119,7 @@ describe("DashboardAssistant", () => {
           donorId: "12",
         },
       },
+      history: [],
     });
   });
 
@@ -137,7 +138,7 @@ describe("DashboardAssistant", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await screen.findByText(
-      "I found NBTS data for that request, but it was not formatted for chat. Please ask for the specific summary or record fields you want.",
+      "I found operational data for that request, but it was not formatted for chat. Please ask for the specific summary or record fields you want.",
     );
     expect(screen.queryByText(/"items"/)).toBeNull();
   });

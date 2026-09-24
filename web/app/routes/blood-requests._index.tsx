@@ -40,7 +40,7 @@ import {
 } from "~/lib/blood-requests";
 
 export const meta: MetaFunction = () => [
-  { title: "Blood requests · NBTS Blood AI" },
+  { title: "Blood requests · Blood Donation Management System" },
 ];
 
 type ListLoaderData =
@@ -173,11 +173,11 @@ export default function BloodRequestsIndexPage() {
       <div>
         <PageHeader
           title="Blood requests"
-          description="Facility requests and status changes. Transitions are enforced by the API."
+          description="Facility requests and status changes. Transitions are enforced by the server."
         />
         <ForbiddenState
           title="Missing permission"
-          message="requests:read is required to list blood requests. The API remains the authority."
+          message="requests:read is required to list blood requests. The server remains the authority."
           detail="UI gate: requests:read"
         />
       </div>
@@ -215,7 +215,7 @@ export default function BloodRequestsIndexPage() {
     <div>
       <PageHeader
         title="Blood requests"
-        description="Facility demand requests. Status transitions are constrained by the API status machine."
+        description="Facility demand requests. Status transitions are constrained by the server status machine."
         actions={
           <ProtectedUi
             session={data.session}

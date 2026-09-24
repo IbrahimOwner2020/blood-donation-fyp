@@ -42,6 +42,7 @@ export type AssistantActionResult = {
 export async function sendAssistantMessage(input: {
   message: string;
   context?: Record<string, unknown>;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<AssistantMessageResult> {
   return apiFetch<AssistantMessageResult>("/assistant/message", {
     method: "POST",

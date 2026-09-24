@@ -88,6 +88,12 @@ class FakeToolClient:
                 mutates=True,
                 inputSchema={"type": "object"},
             ),
+            AssistantToolDescriptor(
+                name="navigation.propose",
+                description="Return a permitted in-app navigation target.",
+                mutates=False,
+                inputSchema={"type": "object"},
+            ),
         ]
 
     def call_tool(self, name: str, arguments: dict[str, object]) -> object:
@@ -380,6 +386,28 @@ def test_chat_without_llm_still_uses_tools_for_known_actions() -> None:
     assert result.proposal.payload["horizonDays"] == 14
     assert tool_client.calls == [
         ("predictions.propose_run", {"bloodGroup": "O+", "horizonDays": 14})
+    ]
+
+
+def test_chat_without_llm_uses_canonical_facilities_route() -> None:
+    tool_client = FakeToolClient(
+        result={
+            "type": "navigation",
+            "path": "/admin/facilities",
+            "message": "Opening facilities.",
+            "requiredPermission": "facilities:read",
+        }
+    )
+
+    result = run_chat(
+        chat_request("open facilities"),
+        tool_client=tool_client,
+    )
+
+    assert result.type == "navigation"
+    assert result.path == "/admin/facilities"
+    assert tool_client.calls == [
+        ("navigation.propose", {"path": "/admin/facilities", "label": "facilities"})
     ]
 
 

@@ -14,10 +14,10 @@ import { ApiRequestError } from "~/lib/api";
 import { fetchAuthSession, loginWithCredentials } from "~/lib/auth";
 
 export const meta: MetaFunction = () => [
-  { title: "Sign in · NBTS Blood AI" },
+  { title: "Sign in · Blood Donation Management System" },
   {
     name: "description",
-    content: "Sign in to the NBTS blood supply prediction console.",
+    content: "Sign in to the Blood Donation Management System.",
   },
 ];
 
@@ -34,7 +34,7 @@ function safeNextPath(raw: string | null | undefined): string {
 }
 
 /**
- * Cookie session lives on the API origin — check via /auth/me in the browser.
+ * Cookie session lives on the server origin — check via /auth/me in the browser.
  */
 export async function clientLoader(_args: ClientLoaderFunctionArgs) {
   try {
@@ -98,16 +98,13 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-xl border border-nbts-border bg-nbts-panel p-8 shadow-sm">
         <div className="mb-6">
           <div className="mb-4 flex items-center gap-2">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded bg-nbts-blood text-sm font-bold text-white">
-              N
-            </span>
             <span className="text-lg font-semibold text-nbts-ink">
-              NBTS Blood AI
+              Blood Donation Management System
             </span>
           </div>
           <h1 className="text-xl font-semibold text-nbts-ink">Sign in</h1>
           <p className="mt-1 text-sm text-nbts-muted">
-            Use your NBTS account. Sessions are issued by the API.
+            Use your registered account to access authorised services.
           </p>
         </div>
 

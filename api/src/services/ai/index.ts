@@ -4,24 +4,9 @@ export type {
   AiFetch,
   AiHealthCheckResult,
   AiHealthResponse,
-  AiMetrics,
-  BaselineModelName,
-  BloodGroup,
-  CandidateModelName,
-  ForecastRequest,
-  ForecastResponse,
-  HistoryPoint,
-  HorizonDays,
-  ModelMetricsResponse,
-  ModelSummary,
-  ModelsListResponse,
-  PredictionPoint,
-  TrainRequest,
-  TrainResponse,
-  TrainingSeriesPoint,
+  PublicChatRequest,
+  PublicChatResponse,
 } from './types'
-
-export { BLOOD_GROUPS } from './types'
 
 export {
   AiServiceClient,

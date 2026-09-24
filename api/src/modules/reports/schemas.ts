@@ -67,7 +67,7 @@ const bloodGroupFilters = {
   bloodGroup: bloodGroupCodeSchema.optional(),
 }
 
-/** Shared date + blood-group filters for donations/demand/predictions. */
+/** Shared date + blood-group filters for donations and blood requests. */
 export const reportDateBloodGroupQuerySchema = z
   .object({
     from: dateOnlySchema.optional(),
@@ -99,11 +99,15 @@ export type InventoryReportQuery = z.infer<typeof inventoryReportQuerySchema>
 export const donationsReportQuerySchema = reportDateBloodGroupQuerySchema
 export type DonationsReportQuery = ReportDateBloodGroupQuery
 
-export const demandReportQuerySchema = reportDateBloodGroupQuerySchema
-export type DemandReportQuery = ReportDateBloodGroupQuery
+export const bloodRequestsReportQuerySchema = reportDateBloodGroupQuerySchema.extend({
+  facilityId: z.coerce.number().int().positive().optional(),
+})
+export type BloodRequestsReportQuery = z.infer<typeof bloodRequestsReportQuerySchema>
 
-export const predictionsReportQuerySchema = reportDateBloodGroupQuerySchema
-export type PredictionsReportQuery = ReportDateBloodGroupQuery
+export const donorEligibilityReportQuerySchema = z.object({
+  ...bloodGroupFilters,
+})
+export type DonorEligibilityReportQuery = z.infer<typeof donorEligibilityReportQuerySchema>
 
 /** Notifications — date range on created_at; blood group via donor join. */
 export const notificationsReportQuerySchema = z

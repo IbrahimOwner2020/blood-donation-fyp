@@ -29,7 +29,7 @@ import {
 } from "~/lib/auth";
 
 export const meta: MetaFunction = () => [
-  { title: "Users · NBTS Blood AI" },
+  { title: "Users · Blood Donation Management System" },
 ];
 
 type UsersLoaderData =
@@ -131,11 +131,11 @@ export default function AdminUsersPage() {
       <div>
         <PageHeader
           title="Admin · Users"
-          description="User administration. Permission checks are enforced by the API."
+          description="User administration. Permission checks are enforced by the server."
         />
         <ForbiddenState
           title="Missing permission"
-          message="User management permission is required to list or edit users. The API remains the authority."
+          message="User management permission is required to list or edit users. The server remains the authority."
           detail="UI gate: users:manage | users:manage:facility"
         />
       </div>
@@ -171,7 +171,7 @@ export default function AdminUsersPage() {
     <div>
       <PageHeader
         title="Admin · Users"
-        description="Create and manage staff accounts. The API scopes facility managers to their assigned facility."
+        description="Create and manage staff accounts. The server scopes facility managers to their assigned facility."
         actions={
           <Link
             to="/admin/users/new"

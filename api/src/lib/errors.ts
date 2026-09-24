@@ -11,6 +11,7 @@ export const ErrorCodes = {
     NOT_FOUND: 'NOT_FOUND',
     CONFLICT: 'CONFLICT',
     RATE_LIMITED: 'RATE_LIMITED',
+    PUBLIC_CHAT_UNAVAILABLE: 'PUBLIC_CHAT_UNAVAILABLE',
     INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const
 
@@ -37,6 +38,7 @@ const DEFAULT_STATUS_BY_CODE: Record<ErrorCode, number> = {
     NOT_FOUND: 404,
     CONFLICT: 409,
     RATE_LIMITED: 429,
+    PUBLIC_CHAT_UNAVAILABLE: 503,
     INTERNAL_ERROR: 500,
 }
 
@@ -102,6 +104,17 @@ export class AppError extends Error {
         return new AppError(message, {
             code: ErrorCodes.RATE_LIMITED,
             status: 429,
+        })
+    }
+
+    static publicChatUnavailable(
+        message = 'The donation assistant is temporarily unavailable. Please try again shortly.',
+        cause?: unknown,
+    ): AppError {
+        return new AppError(message, {
+            code: ErrorCodes.PUBLIC_CHAT_UNAVAILABLE,
+            status: 503,
+            cause,
         })
     }
 

@@ -33,6 +33,12 @@ export type PublicDonor = {
   lastName: string;
   phone: string | null;
   email: string | null;
+  dateOfBirth: string | null;
+  sex: "MALE" | "FEMALE" | null;
+  address: string | null;
+  weightKg: number | null;
+  smsConsent: boolean;
+  emailConsent: boolean;
   bloodGroupId: number;
   bloodGroup: PublicBloodGroup | null;
   /**
@@ -41,6 +47,16 @@ export type PublicDonor = {
    */
   eligibilityStatus: DonorEligibilityStatus;
   active: boolean;
+  donationCount: number;
+  lastDonationDate: string | null;
+  preliminaryEligibility: {
+    status: string;
+    reasons: string[];
+    profileComplete: boolean;
+    age: number | null;
+    nextEligibleDate: string | null;
+    daysUntilEligible: number | null;
+  };
   createdAt?: string;
   updatedAt?: string;
 };
@@ -65,11 +81,17 @@ export type ListDonorsResult = {
 };
 
 export type CreateDonorInput = {
-  donorNumber: string;
+  donorNumber?: string;
   firstName: string;
   lastName: string;
-  phone?: string | null;
-  email?: string | null;
+  phone: string;
+  email: string;
+  dateOfBirth: string;
+  sex: "MALE" | "FEMALE";
+  address: string;
+  weightKg: number;
+  smsConsent?: boolean;
+  emailConsent?: boolean;
   bloodGroupId: number;
   eligibilityStatus?: DonorEligibilityStatus;
   active?: boolean;
@@ -81,6 +103,12 @@ export type UpdateDonorInput = {
   lastName?: string;
   phone?: string | null;
   email?: string | null;
+  dateOfBirth?: string;
+  sex?: "MALE" | "FEMALE";
+  address?: string;
+  weightKg?: number;
+  smsConsent?: boolean;
+  emailConsent?: boolean;
   bloodGroupId?: number;
   eligibilityStatus?: DonorEligibilityStatus;
   active?: boolean;
@@ -149,6 +177,11 @@ function normalizeEligibilityStatus(value: unknown): DonorEligibilityStatus {
   return "UNKNOWN";
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /** Normalize a donor DTO from the API (defensive). */
 export function normalizeDonor(value: unknown): PublicDonor | null {
   if (!isRecord(value) || typeof value.id !== "number") {
@@ -174,10 +207,46 @@ export function normalizeDonor(value: unknown): PublicDonor | null {
     lastName: typeof value.lastName === "string" ? value.lastName.trim() : "",
     phone: toNullableString(value.phone),
     email: toNullableString(value.email),
+    dateOfBirth: toNullableString(value.dateOfBirth),
+    sex: value.sex === "MALE" || value.sex === "FEMALE" ? value.sex : null,
+    address: toNullableString(value.address),
+    weightKg: toFiniteNumber(value.weightKg),
+    smsConsent: value.smsConsent === true,
+    emailConsent: value.emailConsent === true,
     bloodGroupId,
     bloodGroup: normalizeBloodGroup(value.bloodGroup),
     eligibilityStatus: normalizeEligibilityStatus(value.eligibilityStatus),
     active: value.active === true,
+    donationCount: toFiniteNumber(value.donationCount) ?? 0,
+    lastDonationDate: toNullableString(value.lastDonationDate),
+    preliminaryEligibility: isRecord(value.preliminaryEligibility)
+      ? {
+          status:
+            typeof value.preliminaryEligibility.status === "string"
+              ? value.preliminaryEligibility.status
+              : "PROFILE_INCOMPLETE",
+          reasons: Array.isArray(value.preliminaryEligibility.reasons)
+            ? value.preliminaryEligibility.reasons.filter(
+                (reason): reason is string => typeof reason === "string",
+              )
+            : [],
+          profileComplete: value.preliminaryEligibility.profileComplete === true,
+          age: toFiniteNumber(value.preliminaryEligibility.age),
+          nextEligibleDate: toNullableString(
+            value.preliminaryEligibility.nextEligibleDate,
+          ),
+          daysUntilEligible: toFiniteNumber(
+            value.preliminaryEligibility.daysUntilEligible,
+          ),
+        }
+      : {
+          status: "PROFILE_INCOMPLETE",
+          reasons: ["Complete the donor profile"],
+          profileComplete: false,
+          age: null,
+          nextEligibleDate: null,
+          daysUntilEligible: null,
+        },
     createdAt: toOptionalString(value.createdAt),
     updatedAt: toOptionalString(value.updatedAt),
   };
@@ -286,11 +355,20 @@ export async function createDonor(
   input: CreateDonorInput,
 ): Promise<PublicDonor> {
   const body: Record<string, unknown> = {
-    donorNumber: input.donorNumber?.trim() || "",
     firstName: input.firstName?.trim() || "",
     lastName: input.lastName?.trim() || "",
+    phone: input.phone.trim(),
+    email: input.email.trim(),
+    dateOfBirth: input.dateOfBirth,
+    sex: input.sex,
+    address: input.address.trim(),
+    weightKg: input.weightKg,
+    smsConsent: input.smsConsent === true,
+    emailConsent: input.emailConsent === true,
     bloodGroupId: input.bloodGroupId,
   };
+
+  if (input.donorNumber?.trim()) body.donorNumber = input.donorNumber.trim();
 
   if (input.phone !== undefined) {
     body.phone = input.phone?.trim() || null;
@@ -298,6 +376,12 @@ export async function createDonor(
   if (input.email !== undefined) {
     body.email = input.email?.trim() || null;
   }
+  if (input.dateOfBirth !== undefined) body.dateOfBirth = input.dateOfBirth;
+  if (input.sex !== undefined) body.sex = input.sex;
+  if (input.address !== undefined) body.address = input.address.trim();
+  if (input.weightKg !== undefined) body.weightKg = input.weightKg;
+  if (input.smsConsent !== undefined) body.smsConsent = input.smsConsent;
+  if (input.emailConsent !== undefined) body.emailConsent = input.emailConsent;
   if (input.eligibilityStatus) {
     body.eligibilityStatus = input.eligibilityStatus;
   }

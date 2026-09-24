@@ -26,8 +26,6 @@ export const UI_PERMISSIONS = {
   requestsRead: "requests:read",
   requestsCreate: "requests:create",
   requestsUpdate: "requests:update",
-  predictionsRead: "predictions:read",
-  predictionsRun: "predictions:run",
   alertsRead: "alerts:read",
   alertsUpdate: "alerts:update",
   notificationsRead: "notifications:read",
@@ -127,12 +125,17 @@ export function toAuthSession(
 }
 
 export type RegisterDonorInput = {
-  name: string;
   email: string;
   password: string;
   firstName: string;
   lastName: string;
   phone: string;
+  dateOfBirth: string;
+  sex: "MALE" | "FEMALE";
+  address: string;
+  weightKg: number;
+  smsConsent: boolean;
+  emailConsent: boolean;
   bloodGroupId: number;
 };
 
@@ -142,12 +145,17 @@ export async function registerDonorAccount(
   const data = await apiFetch<RegisterDonorResponse>("/auth/register-donor", {
     method: "POST",
     json: {
-      name: input.name.trim(),
       email: input.email.trim(),
       password: input.password,
       firstName: input.firstName.trim(),
       lastName: input.lastName.trim(),
       phone: input.phone.trim(),
+      dateOfBirth: input.dateOfBirth,
+      sex: input.sex,
+      address: input.address.trim(),
+      weightKg: input.weightKg,
+      smsConsent: input.smsConsent,
+      emailConsent: input.emailConsent,
       bloodGroupId: input.bloodGroupId,
     },
   });

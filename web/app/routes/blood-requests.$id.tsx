@@ -49,7 +49,7 @@ import {
 } from "~/lib/blood-requests";
 
 export const meta: MetaFunction = () => [
-  { title: "Request detail · NBTS Blood AI" },
+  { title: "Request detail · Blood Donation Management System" },
 ];
 
 type DetailLoaderData =
@@ -294,7 +294,7 @@ function StatusChangeForm({
         ) : selected === "FULFILLED" ? (
           <p className="text-xs text-nbts-muted">
             FULFILLED sets fulfilled units to {bloodRequest.unitsRequested}{" "}
-            (units requested) on the API.
+            (units requested) on the server.
           </p>
         ) : (
           <p className="text-xs text-nbts-muted">
@@ -320,7 +320,7 @@ function StatusChangeForm({
       <ConfirmDialog
         open={confirmOpen}
         title={`Apply ${formatRequestStatus(selected)}?`}
-        description={`Request #${bloodRequest.id} will move to ${formatRequestStatus(selected)}. The API enforces the status machine and may reject illegal transitions.`}
+        description={`Request #${bloodRequest.id} will move to ${formatRequestStatus(selected)}. The server enforces the status machine and may reject illegal transitions.`}
         confirmLabel="Apply status"
         tone={selected === "CANCELLED" ? "danger" : "primary"}
         busy={busy}
@@ -415,7 +415,7 @@ export default function BloodRequestDetailPage() {
     <div>
       <PageHeader
         title={`Request #${bloodRequest.id}`}
-        description="Detail and status changes. Illegal transitions surface as API errors."
+        description="Detail and status changes. Illegal transitions surface as server errors."
         actions={
           <Link
             to="/blood-requests"
@@ -491,7 +491,7 @@ export default function BloodRequestDetailPage() {
       <section className="rounded-lg border border-nbts-border bg-nbts-panel p-5">
         <h2 className="text-base font-semibold text-nbts-ink">Status change</h2>
         <p className="mt-1 text-xs text-nbts-muted">
-          Machine (API authority): {transitionMachineSummary()}
+          Machine (server authority): {transitionMachineSummary()}
         </p>
 
         <div className="mt-4">
@@ -501,7 +501,7 @@ export default function BloodRequestDetailPage() {
             fallback={
               <ForbiddenState
                 title="Cannot change status"
-                message="requests:update is required to change status or fulfilment. The API will reject unauthorized PATCH calls."
+                message="requests:update is required to change status or fulfilment. The server will reject unauthorized PATCH calls."
                 detail="UI gate: requests:update"
               />
             }

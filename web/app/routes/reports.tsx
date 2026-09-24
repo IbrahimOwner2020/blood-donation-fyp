@@ -5,7 +5,6 @@
 
 import {
   Form,
-  Link,
   redirect,
   useLoaderData,
   useNavigation,
@@ -28,28 +27,24 @@ import {
 } from "~/lib/auth";
 import { BLOOD_GROUP_OPTIONS } from "~/lib/donors";
 import {
-  listAiAnalysisReports,
-  type PublicAiAnalysisRun,
-} from "~/lib/ai-analysis";
-import {
-  fetchDemandReport,
+  fetchBloodRequestsReport,
+  fetchDonorEligibilityReport,
   fetchDonationsReport,
   fetchInventoryReport,
   fetchNotificationsReport,
-  fetchPredictionsReport,
   formatBloodGroupLabel,
   formatCount,
   isValidDateOnly,
-  type DemandReport,
+  type BloodRequestsReport,
+  type DonorEligibilityReport,
   type DonationsReport,
   type InventoryReport,
   type NotificationsReport,
-  type PredictionsReport,
   type ReportSectionStatus,
 } from "~/lib/reports";
 
 export const meta: MetaFunction = () => [
-  { title: "Reports · NBTS Blood AI" },
+  { title: "Reports · Blood Donation Management System" },
 ];
 
 type ReportFilters = {
@@ -65,10 +60,9 @@ type ReportsLoaderData =
       filters: ReportFilters;
       inventory: ReportSectionStatus<InventoryReport>;
       donations: ReportSectionStatus<DonationsReport>;
-      demand: ReportSectionStatus<DemandReport>;
-      predictions: ReportSectionStatus<PredictionsReport>;
+      bloodRequests: ReportSectionStatus<BloodRequestsReport>;
+      donorEligibility: ReportSectionStatus<DonorEligibilityReport>;
       notifications: ReportSectionStatus<NotificationsReport>;
-      aiReports: PublicAiAnalysisRun[];
     }
   | {
       status: "forbidden";
@@ -112,7 +106,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include reports:read. The API remains the access authority.",
+        "Your account does not have access to operational reports.",
       filters,
     };
   }
@@ -124,14 +118,13 @@ export async function clientLoader({
   };
 
   try {
-    const [inventory, donations, demand, predictions, notifications, aiReports] =
+    const [donorEligibility, donations, inventory, bloodRequests, notifications] =
       await Promise.all([
-        fetchInventoryReport(params),
+        fetchDonorEligibilityReport(params),
         fetchDonationsReport(params),
-        fetchDemandReport(params),
-        fetchPredictionsReport(params),
+        fetchInventoryReport(params),
+        fetchBloodRequestsReport(params),
         fetchNotificationsReport(params),
-        listAiAnalysisReports({ limit: 5 }).then((result) => result.reports),
       ]);
 
     return {
@@ -140,16 +133,15 @@ export async function clientLoader({
       filters,
       inventory,
       donations,
-      demand,
-      predictions,
+      bloodRequests,
+      donorEligibility,
       notifications,
-      aiReports,
     };
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
-        : "Unable to load reports from the API.";
+        : "Unable to load reports from the system.";
     return {
       status: "error",
       session,
@@ -307,7 +299,7 @@ export default function ReportsPage() {
       <div>
         <PageHeader
           title="Reports"
-          description="Inventory, donations, demand, predictions, and notification reports."
+          description="Donor operations, donations, inventory, blood requests, and notification reports."
         />
         <ForbiddenState
           title="Reports access denied"
@@ -325,7 +317,7 @@ export default function ReportsPage() {
       <div>
         <PageHeader
           title="Reports"
-          description="Inventory, donations, demand, predictions, and notification reports."
+          description="Donor operations, donations, inventory, blood requests, and notification reports."
         />
         <ErrorState title="Unable to load reports" message={data.message} />
       </div>
@@ -342,8 +334,16 @@ export default function ReportsPage() {
     <div>
       <PageHeader
         title="Reports"
-        description="Operational reports from the API. Filters apply where the report supports date or blood-group scope."
+        description="Printable operational reports. Filters apply where date or blood-group scope is supported."
+        actions={<button type="button" onClick={() => window.print()} className="print:hidden rounded-md bg-nbts-blood px-4 py-2 text-sm font-semibold text-white">Print or save as PDF</button>}
       />
+
+      <div className="print-report-header hidden print:block">
+        <h1>Blood Donation Management System</h1>
+        <h2>Combined operational report</h2>
+        <p>Period: {filters.from || "All dates"} to {filters.to || "Present"} · Blood group: {filters.bloodGroup || "All"}</p>
+        <p>Generated: {new Date().toLocaleString()} · User: {data?.status === "ok" ? data.session.displayName : "—"}</p>
+      </div>
 
       <Form
         method="get"
@@ -395,6 +395,27 @@ export default function ReportsPage() {
 
       {data?.status === "ok" ? (
         <>
+          <SectionShell
+            title="Donor eligibility"
+            description="Preliminary eligibility for outreach and scheduling; medical screening is still required."
+          >
+            {renderSection(data.donorEligibility, (report) => (
+              <>
+                <MetricStrip items={[
+                  { label: "Donors", value: formatCount(report.totals.total) },
+                  { label: "Eligible", value: formatCount(report.totals.eligible) },
+                  { label: "Waiting", value: formatCount(report.totals.waitingPeriod) },
+                  { label: "Incomplete profiles", value: formatCount(report.totals.profileIncomplete) },
+                ]} />
+                <SimpleTable
+                  headers={["Membership", "Donor", "Blood group", "Donations", "Last donation", "Next eligible", "Status"]}
+                  rows={report.donors.map((donor) => [donor.donorNumber, donor.name, formatBloodGroupLabel(donor.bloodGroup), formatCount(donor.donationCount), donor.lastDonationDate || "—", donor.nextEligibleDate || "Now", donor.status.replaceAll("_", " ")])}
+                  emptyLabel="No donors for the selected filters."
+                />
+              </>
+            ))}
+          </SectionShell>
+
           <SectionShell
             title="Inventory"
             description="Point-in-time stock by blood group (as of filter end date when provided)."
@@ -491,24 +512,24 @@ export default function ReportsPage() {
           </SectionShell>
 
           <SectionShell
-            title="Demand"
-            description="Aggregated demand records (requested / issued / used / unfulfilled)."
+            title="Blood requests"
+            description="Requested, issued, used, and unfulfilled blood units."
           >
-            {renderSection(data.demand, (report) => (
+            {renderSection(data.bloodRequests, (report) => (
               <>
                 <MetricStrip
                   items={[
                     {
-                      label: "Records",
-                      value: formatCount(report.totals.recordCount),
+                      label: "Requests",
+                      value: formatCount(report.totals.requestCount),
                     },
                     {
                       label: "Requested",
                       value: formatCount(report.totals.unitsRequested),
                     },
                     {
-                      label: "Issued",
-                      value: formatCount(report.totals.unitsIssued),
+                      label: "Fulfilled",
+                      value: formatCount(report.totals.fulfilledUnits),
                     },
                     {
                       label: "Unfulfilled",
@@ -520,106 +541,19 @@ export default function ReportsPage() {
                   headers={[
                     "Blood group",
                     "Requested",
-                    "Issued",
-                    "Used",
+                    "Fulfilled",
                     "Unfulfilled",
                   ]}
                   rows={report.byBloodGroup.map((g) => [
                     formatBloodGroupLabel(g.bloodGroup),
                     formatCount(g.unitsRequested),
-                    formatCount(g.unitsIssued),
-                    formatCount(g.unitsUsed),
+                    formatCount(g.fulfilledUnits),
                     formatCount(g.unfulfilledUnits),
                   ])}
-                  emptyLabel="No demand rows for the selected filters."
+                  emptyLabel="No blood-request rows for the selected filters."
                 />
               </>
             ))}
-          </SectionShell>
-
-          <SectionShell
-            title="Predictions"
-            description="Forecast runs filtered by forecast start date and blood group."
-          >
-            {renderSection(data.predictions, (report) => (
-              <>
-                <MetricStrip
-                  items={[
-                    {
-                      label: "Runs",
-                      value: formatCount(report.totals.runCount),
-                    },
-                    {
-                      label: "Predicted units (sum)",
-                      value: formatCount(report.totals.predictedUnits),
-                    },
-                  ]}
-                />
-                <h3 className="mb-2 text-sm font-medium text-nbts-ink">
-                  By blood group
-                </h3>
-                <SimpleTable
-                  headers={["Blood group", "Runs", "Predicted units"]}
-                  rows={report.byBloodGroup.map((g) => [
-                    formatBloodGroupLabel(g.bloodGroup),
-                    formatCount(g.runCount),
-                    formatCount(g.predictedUnits),
-                  ])}
-                  emptyLabel="No prediction aggregates."
-                />
-                <h3 className="mb-2 mt-4 text-sm font-medium text-nbts-ink">
-                  Recent runs
-                </h3>
-                <SimpleTable
-                  headers={[
-                    "ID",
-                    "Blood group",
-                    "Start",
-                    "End",
-                    "Units",
-                    "Model",
-                  ]}
-                  rows={report.recent.map((r) => [
-                    String(r.id),
-                    formatBloodGroupLabel(r.bloodGroup),
-                    r.forecastStart || "—",
-                    r.forecastEnd || "—",
-                    formatCount(r.predictedUnits),
-                    r.modelName || "—",
-                  ])}
-                  emptyLabel="No recent prediction runs."
-                />
-              </>
-            ))}
-          </SectionShell>
-
-          <SectionShell
-            title="AI report"
-            description="Latest daily AI supply conclusions and recommended outreach."
-          >
-            {data.aiReports.length === 0 ? (
-              <EmptyState
-                title="No AI reports yet"
-                description="Run the daily AI analysis to attach conclusions and donor recommendations."
-              />
-            ) : (
-              <SimpleTable
-                headers={["Report", "Risk", "Trigger", "Conclusion"]}
-                rows={data.aiReports.map((report) => [
-                  `#${report.id}`,
-                  report.riskLevel,
-                  report.triggerType,
-                  report.conclusion,
-                ])}
-                emptyLabel="No AI reports yet."
-              />
-            )}
-            <Link
-              to="/ai-reports"
-              className="mt-3 inline-flex text-sm font-semibold text-nbts-blood underline"
-            >
-              Open AI reports
-            </Link>
           </SectionShell>
 
           <SectionShell

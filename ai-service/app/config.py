@@ -5,9 +5,49 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 LlmProviderName = Literal["none", "ollama", "openai"]
+
+
+def load_dotenv_files(*, override: bool = False) -> None:
+    """Load repo / ai-service ``.env`` for host runs.
+
+    Docker/Railway already inject env vars; Bun loads ``.env`` for the API.
+    Uvicorn does not — call this from the FastAPI entrypoint so host processes
+    pick up ``LLM_PROVIDER=ollama`` and related keys. Does not override existing
+    process env unless ``override=True``.
+    """
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parents[2] / ".env",  # repo root
+        here.parents[1] / ".env",  # ai-service/
+        Path.cwd() / ".env",
+    ]
+    seen: set[Path] = set()
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen or not resolved.is_file():
+            continue
+        seen.add(resolved)
+        try:
+            for raw_line in resolved.read_text(encoding="utf-8").splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                if not key:
+                    continue
+                if not override and key in os.environ:
+                    continue
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                    value = value[1:-1]
+                os.environ[key] = value
+        except OSError:
+            continue
 
 
 def _env_bool(name: str, default: bool = False) -> bool:

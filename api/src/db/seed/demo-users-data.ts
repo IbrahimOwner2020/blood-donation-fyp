@@ -25,19 +25,19 @@ function readEnv(key: string, fallback: string): string {
 export function listDemoUserSeeds(): DemoUserSeed[] {
     return [
         {
-            name: 'Demo System Administrator',
+            name: 'Demo Administrator',
             email: readEnv('DEMO_ADMIN_EMAIL', 'admin@nbts.local'),
             password: readEnv('DEMO_ADMIN_PASSWORD', 'ChangeMe-Admin-Local-Only!'),
-            roleName: 'System Administrator',
+            roleName: 'Administrator',
         },
         {
-            name: 'Demo Blood Bank Officer',
+            name: 'Demo Blood Bank Staff',
             email: readEnv('DEMO_OFFICER_EMAIL', 'officer@nbts.local'),
             password: readEnv(
                 'DEMO_OFFICER_PASSWORD',
                 'ChangeMe-Officer-Local-Only!',
             ),
-            roleName: 'NBTS Blood Bank Officer',
+            roleName: 'Blood Bank Staff',
         },
     ]
 }

@@ -38,7 +38,7 @@ import {
 } from "~/lib/blood-requests";
 
 export const meta: MetaFunction = () => [
-  { title: "New blood request · NBTS Blood AI" },
+  { title: "New blood request · Blood Donation Management System" },
 ];
 
 type NewRequestLoaderData =
@@ -256,7 +256,7 @@ export default function BloodRequestNewPage() {
       {facilities.length === 0 ? (
         <EmptyState
           title="No active facilities"
-          description="An active healthcare facility is required before creating a request. Seed or create facilities via the API."
+          description="An active healthcare facility is required before creating a request. Seed or create facilities via the server."
           action={
             <Link
               to="/blood-requests"
@@ -348,7 +348,7 @@ export default function BloodRequestNewPage() {
               className="rounded border border-nbts-border bg-nbts-surface px-3 py-2"
             />
             <span className="text-xs text-nbts-muted">
-              Leave blank to use the API default (now).
+              Leave blank to use the server default (now).
             </span>
           </label>
 

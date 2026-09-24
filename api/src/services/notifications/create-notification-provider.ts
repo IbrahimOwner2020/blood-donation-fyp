@@ -1,11 +1,12 @@
 import type { NotificationChannel, NotificationProvider } from './types'
 import { MockSmsProvider } from './providers/mock-sms-provider'
+import { NextSmsProvider } from './providers/nextsms-provider'
 import {
   SmtpEmailProvider,
   type SmtpEmailConfig,
 } from './providers/smtp-email-provider'
 
-export type SmsProviderKind = 'mock'
+export type SmsProviderKind = 'mock' | 'nextsms'
 
 export interface NotificationEnv {
   SMS_PROVIDER?: string
@@ -15,6 +16,10 @@ export interface NotificationEnv {
   SMTP_USER?: string
   SMTP_PASS?: string
   SMTP_SECURE?: string
+  NEXTSMS_BASE_URL?: string
+  NEXTSMS_API_KEY?: string
+  NEXTSMS_API_SECRET?: string
+  NEXTSMS_SENDER_ID?: string
 }
 
 /**
@@ -59,9 +64,17 @@ export function createSmsProvider(
   if (kind === 'mock') {
     return new MockSmsProvider()
   }
+  if (kind === 'nextsms') {
+    return new NextSmsProvider({
+      baseUrl: (env.NEXTSMS_BASE_URL ?? 'https://messaging-service.co.tz/api/sms/v1/text/single').trim(),
+      apiKey: env.NEXTSMS_API_KEY?.trim() ?? '',
+      apiSecret: env.NEXTSMS_API_SECRET?.trim() ?? '',
+      senderId: env.NEXTSMS_SENDER_ID?.trim() ?? '',
+    })
+  }
 
   throw new Error(
-    `Unsupported SMS_PROVIDER="${kind}". Supported: mock`,
+    `Unsupported SMS_PROVIDER="${kind}". Supported: mock, nextsms`,
   )
 }
 

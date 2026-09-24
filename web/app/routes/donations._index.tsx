@@ -38,7 +38,7 @@ import {
 } from "~/lib/donations";
 
 export const meta: MetaFunction = () => [
-  { title: "Donations · NBTS Blood AI" },
+  { title: "Donations · Blood Donation Management System" },
 ];
 
 type DonationFilters = {
@@ -134,7 +134,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include donations:read. The API remains the access authority.",
+        "Your session does not include donations:read. The server remains the access authority.",
       centres,
       filters,
     };
@@ -231,7 +231,7 @@ export default function DonationsIndexPage() {
     <div>
       <PageHeader
         title="Donations"
-        description="Recorded donations from the API. Unit and stock totals remain API-owned — recording a donation may create linked inventory units."
+        description="Recorded donations from the server. Unit and stock totals remain server-owned — recording a donation may create linked inventory units."
         actions={
           <ProtectedUi
             session={session}
@@ -255,14 +255,14 @@ export default function DonationsIndexPage() {
             data.message ||
             "You do not have permission to view donations (donations:read)."
           }
-          detail="UI gate only — the API enforces authorization."
+          detail="UI gate only — the server enforces authorization."
         />
       ) : null}
 
       {data?.status === "error" ? (
         <ErrorState
           title="Could not load donations"
-          message={data.message || "Unable to load donations from the API."}
+          message={data.message || "Unable to load donations from the server."}
         />
       ) : null}
 
@@ -389,6 +389,7 @@ export default function DonationsIndexPage() {
                     <th className="px-4 py-3 font-medium">Donor</th>
                     <th className="px-4 py-3 font-medium">Centre</th>
                     <th className="px-4 py-3 font-medium">Blood group</th>
+                    <th className="px-4 py-3 font-medium">Category</th>
                     <th className="px-4 py-3 font-medium">Units</th>
                   </tr>
                 </thead>
@@ -430,6 +431,7 @@ export default function DonationsIndexPage() {
                       <td className="px-4 py-3">
                         {formatDonationBloodGroup(donation)}
                       </td>
+                      <td className="px-4 py-3">{donation.category === "FAMILY_REPLACEMENT" ? "Family replacement" : "Voluntary"}</td>
                       <td className="px-4 py-3">{donation.units}</td>
                     </tr>
                   ))}

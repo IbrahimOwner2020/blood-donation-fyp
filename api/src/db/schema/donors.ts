@@ -1,16 +1,19 @@
 import {
   boolean,
+  date,
+  decimal,
   index,
   int,
   mysqlEnum,
   mysqlTable,
+  text,
   timestamp,
   uniqueIndex,
   varchar,
 } from 'drizzle-orm/mysql-core'
 
 import { bloodGroups } from './blood-groups'
-import { donorEligibilityStatuses } from './enums'
+import { donorEligibilityStatuses, donorSexes } from './enums'
 import { users } from './users'
 
 /**
@@ -26,6 +29,12 @@ export const donors = mysqlTable(
     lastName: varchar('last_name', { length: 120 }).notNull(),
     phone: varchar('phone', { length: 32 }),
     email: varchar('email', { length: 255 }),
+    dateOfBirth: date('date_of_birth'),
+    sex: mysqlEnum('sex', donorSexes),
+    address: text('address'),
+    weightKg: decimal('weight_kg', { precision: 5, scale: 2 }),
+    smsConsent: boolean('sms_consent').notNull().default(false),
+    emailConsent: boolean('email_consent').notNull().default(false),
     bloodGroupId: int('blood_group_id')
       .notNull()
       .references(() => bloodGroups.id),

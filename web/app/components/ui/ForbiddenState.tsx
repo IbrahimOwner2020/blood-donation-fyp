@@ -10,7 +10,7 @@ type ForbiddenStateProps = {
 
 /**
  * Presentation-only forbidden view when session lacks a UI gate permission.
- * Not a security boundary — the API still enforces access.
+ * Not a security boundary — the server still enforces access.
  */
 export function ForbiddenState({
   title = "Forbidden",

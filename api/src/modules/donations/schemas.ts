@@ -5,6 +5,8 @@
 import { z } from 'zod'
 
 import { BLOOD_GROUP_SEEDS } from '../../db/seed/blood-groups-data'
+import { donationCategories } from '../../db/schema/enums'
+import { createDonorBodySchema } from '../donors/schemas'
 
 const BLOOD_GROUP_CODES = BLOOD_GROUP_SEEDS.map((g) => g.code) as [
   string,
@@ -87,11 +89,19 @@ export const donationIdParamSchema = z.object({
 
 export type DonationIdParam = z.infer<typeof donationIdParamSchema>
 
-export const createDonationBodySchema = z.object({
-  donorId: positiveId('Donor id'),
+const donationBaseSchema = z.object({
+  donorId: positiveId('Donor id').optional(),
+  newDonor: createDonorBodySchema
+    .omit({ donorNumber: true, eligibilityStatus: true, active: true })
+    .optional(),
   donationCentreId: positiveId('Donation centre id'),
   bloodGroupId: positiveId('Blood group id'),
   donationDate: dateOnlySchema,
+  category: z.enum(donationCategories).optional().default('VOLUNTARY'),
+  weightKgAtDonation: z.coerce
+    .number({ required_error: 'Donation weight is required' })
+    .positive('Donation weight must be positive')
+    .max(300, 'Donation weight must be at most 300 kg'),
   /** Number of unit-level inventory rows to create (default 1). */
   units: unitsSchema.optional().default(1),
   notes: notesSchema,
@@ -106,6 +116,25 @@ export const createDonationBodySchema = z.object({
     .nullable()
     .optional(),
 })
+
+export const createDonationBodySchema = donationBaseSchema.superRefine(
+  (body, ctx) => {
+    if ((body.donorId ? 1 : 0) + (body.newDonor ? 1 : 0) !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['donorId'],
+        message: 'Select an existing donor or provide one new donor',
+      })
+    }
+    if (body.newDonor && body.newDonor.bloodGroupId !== body.bloodGroupId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['bloodGroupId'],
+        message: 'Donation blood group must match the new donor blood group',
+      })
+    }
+  },
+)
 
 export type CreateDonationBody = z.infer<typeof createDonationBodySchema>
 

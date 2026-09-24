@@ -34,16 +34,10 @@ export const PERMISSION_CODES = [
 export type PermissionCode = (typeof PERMISSION_CODES)[number]
 
 export const ROLE_NAMES = [
-  'System Administrator',
-  'Facility Manager',
-  'Donor Manager',
-  'Blood Collector',
-  'Blood Bank Manager',
-  'Doctor',
-  'NBTS Blood Bank Officer',
-  'Authorized Manager',
-  'Registered Donor',
+  'Administrator',
+  'Blood Bank Staff',
   'Hospital Staff',
+  'Registered Donor',
 ] as const
 
 export type RoleName = (typeof ROLE_NAMES)[number]

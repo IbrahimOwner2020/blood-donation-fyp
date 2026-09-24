@@ -18,7 +18,7 @@
 #   RAILWAY_PROJECT_ID=...
 #   RAILWAY_ATTACH=1
 #   RAILWAY_SKIP_VAR_SYNC=1
-#   AI_SERVICE_URL=http://ai-service.railway.internal:8000
+#   AI_SERVICE_URL=http://ai-service.railway.internal:8080
 #   API_SERVICE=api AI_SERVICE=ai-service WEB_SERVICE=web
 
 set -euo pipefail
@@ -175,7 +175,8 @@ if [[ "${RAILWAY_SKIP_VAR_SYNC:-0}" != "1" ]]; then
     DB_NAME="$DB_NAME" \
     DB_USER="$DB_USER" \
     DB_PASSWORD="$DB_PASSWORD" \
-    AI_SERVICE_URL="${AI_SERVICE_URL:-http://${AI_SERVICE}.railway.internal:${AI_SERVICE_PRIVATE_PORT:-8000}}" \
+    AI_SERVICE_URL="${AI_SERVICE_URL:-http://${AI_SERVICE}.railway.internal:${AI_SERVICE_PRIVATE_PORT:-8080}}" \
+    API_INTERNAL_BASE_URL="${API_INTERNAL_BASE_URL:-http://${API_SERVICE}.railway.internal:${API_PRIVATE_PORT:-8080}}" \
     AI_REQUEST_TIMEOUT_MS="${AI_REQUEST_TIMEOUT_MS:-30000}" \
     AI_TRAIN_TIMEOUT_MS="${AI_TRAIN_TIMEOUT_MS:-120000}" \
     AI_HEALTH_TIMEOUT_MS="${AI_HEALTH_TIMEOUT_MS:-5000}" \

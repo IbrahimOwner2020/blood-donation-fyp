@@ -10,16 +10,19 @@ import {
   eq,
   inArray,
   like,
+  max,
   ne,
   or,
   type SQL,
 } from 'drizzle-orm'
 
-import type { Db } from '../../db'
+import type { Db, DbTransaction } from '../../db'
 import { bloodGroups, donations, donors } from '../../db/schema'
 import type { DonorEligibilityStatus } from '../../db/schema/enums'
 import { AppError } from '../../lib/errors'
 import type { CreateDonorBody, ListDonorsQuery, UpdateDonorBody } from './schemas'
+import { calculateDonorEligibility } from './eligibility'
+import { normalizeTanzanianPhone } from './phone'
 import {
   toPublicDonor,
   type BloodGroupRow,
@@ -32,6 +35,12 @@ type DonorWithBloodGroup = {
   bloodGroup: BloodGroupRow | null
 }
 
+function dateOnly(value: string | Date | null | undefined): string | null {
+  if (!value) return null
+  if (value instanceof Date) return value.toISOString().slice(0, 10)
+  return value.slice(0, 10)
+}
+
 function mapDonorRow(row: typeof donors.$inferSelect): DonorRow {
   return {
     id: row.id,
@@ -41,6 +50,12 @@ function mapDonorRow(row: typeof donors.$inferSelect): DonorRow {
     lastName: row.lastName,
     phone: row.phone ?? null,
     email: row.email ?? null,
+    dateOfBirth: dateOnly(row.dateOfBirth),
+    sex: row.sex ?? null,
+    address: row.address ?? null,
+    weightKg: row.weightKg === null ? null : Number(row.weightKg),
+    smsConsent: Boolean(row.smsConsent),
+    emailConsent: Boolean(row.emailConsent),
     bloodGroupId: row.bloodGroupId,
     eligibilityStatus: row.eligibilityStatus,
     active: Boolean(row.active),
@@ -215,8 +230,51 @@ async function loadDonorWithBloodGroup(
   }
 }
 
-function toPublicOrThrow(loaded: DonorWithBloodGroup | null): PublicDonor {
-  const publicDonor = toPublicDonor(loaded?.donor, loaded?.bloodGroup)
+type DonationStats = { donationCount: number; lastDonationDate: string | null }
+
+async function loadDonationStats(
+  db: Db,
+  donorIds: number[],
+): Promise<Map<number, DonationStats>> {
+  if (!donorIds.length) return new Map()
+  const rows = await db
+    .select({
+      donorId: donations.donorId,
+      donationCount: count(),
+      lastDonationDate: max(donations.donationDate),
+    })
+    .from(donations)
+    .where(inArray(donations.donorId, donorIds))
+    .groupBy(donations.donorId)
+  return new Map(
+    rows.map((row) => [
+      row.donorId,
+      {
+        donationCount: Number(row.donationCount ?? 0),
+        lastDonationDate: dateOnly(row.lastDonationDate),
+      },
+    ]),
+  )
+}
+
+function serializeDonor(
+  loaded: DonorWithBloodGroup | null,
+  stats: DonationStats = { donationCount: 0, lastDonationDate: null },
+): PublicDonor {
+  const donor = loaded?.donor
+  const publicDonor = toPublicDonor(donor, loaded?.bloodGroup, {
+    ...stats,
+    preliminaryEligibility: calculateDonorEligibility({
+      active: donor?.active ?? false,
+      dateOfBirth: donor?.dateOfBirth ?? null,
+      sex: donor?.sex ?? null,
+      weightKg: donor?.weightKg ?? null,
+      address: donor?.address ?? null,
+      phone: donor?.phone ?? null,
+      email: donor?.email ?? null,
+      lastDonationDate: stats.lastDonationDate,
+    }),
+  })
   if (!publicDonor) {
     throw AppError.internal('Failed to serialize donor')
   }
@@ -322,14 +380,15 @@ export async function listDonors(
     .limit(limit)
     .offset(offset)
 
-  const items = (rows ?? [])
-    .map((row) =>
-      toPublicDonor(
-        row?.donor ? mapDonorRow(row.donor) : null,
-        mapBloodGroupRow(row?.bloodGroup),
-      ),
+  const donorIds = rows.map((row) => row.donor.id)
+  const stats = await loadDonationStats(db, donorIds)
+  const items = rows.map((row) => {
+    const donor = mapDonorRow(row.donor)
+    return serializeDonor(
+      { donor, bloodGroup: mapBloodGroupRow(row.bloodGroup) },
+      stats.get(donor.id),
     )
-    .filter((item): item is PublicDonor => item !== null)
+  })
 
   return { items, total, limit, offset }
 }
@@ -342,7 +401,8 @@ export async function getDonorById(
   if (!loaded) {
     throw AppError.notFound('Donor not found')
   }
-  return toPublicOrThrow(loaded)
+  const stats = await loadDonationStats(db, [donorId])
+  return serializeDonor(loaded, stats.get(donorId))
 }
 
 export async function getDonorByUserId(
@@ -364,10 +424,27 @@ export async function getDonorByUserId(
     throw AppError.notFound('Donor profile not found')
   }
 
-  return toPublicOrThrow({
+  const stats = await loadDonationStats(db, [row.donor.id])
+  return serializeDonor({
     donor: mapDonorRow(row.donor),
     bloodGroup: mapBloodGroupRow(row.bloodGroup),
-  })
+  }, stats.get(row.donor.id))
+}
+
+export async function generateUniqueDonorNumber(
+  db: Db | DbTransaction,
+): Promise<string> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const suffix = `${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
+    const donorNumber = `BDMS-${suffix}`
+    const rows = await db
+      .select({ id: donors.id })
+      .from(donors)
+      .where(eq(donors.donorNumber, donorNumber))
+      .limit(1)
+    if (!rows[0]) return donorNumber
+  }
+  throw AppError.internal('Unable to generate a donor membership number')
 }
 
 export async function createDonor(
@@ -375,11 +452,12 @@ export async function createDonor(
   body: CreateDonorBody,
 ): Promise<PublicDonor> {
   const bloodGroup = await requireBloodGroup(db, body.bloodGroupId)
-  const phone = emptyToNull(body.phone ?? null)
-  const email = emptyToNull(body.email ?? null)
+  const donorNumber = body.donorNumber ?? (await generateUniqueDonorNumber(db))
+  const phone = normalizeTanzanianPhone(String(body.phone))
+  const email = String(body.email).trim().toLowerCase()
 
   await assertUniqueDonorFields(db, {
-    donorNumber: body.donorNumber,
+    donorNumber,
     phone,
     email,
   })
@@ -387,11 +465,17 @@ export async function createDonor(
   const inserted = await db
     .insert(donors)
     .values({
-      donorNumber: body.donorNumber,
+      donorNumber,
       firstName: body.firstName,
       lastName: body.lastName,
       phone,
       email,
+      dateOfBirth: body.dateOfBirth,
+      sex: body.sex,
+      address: body.address,
+      weightKg: body.weightKg.toFixed(2),
+      smsConsent: body.smsConsent,
+      emailConsent: body.emailConsent,
       bloodGroupId: bloodGroup.id,
       eligibilityStatus: body.eligibilityStatus ?? 'UNKNOWN',
       active: body.active ?? true,
@@ -422,6 +506,12 @@ export async function updateDonor(
     lastName?: string
     phone?: string | null
     email?: string | null
+    dateOfBirth?: string
+    sex?: 'MALE' | 'FEMALE'
+    address?: string
+    weightKg?: string
+    smsConsent?: boolean
+    emailConsent?: boolean
     bloodGroupId?: number
     eligibilityStatus?: DonorEligibilityStatus
     active?: boolean
@@ -437,11 +527,17 @@ export async function updateDonor(
     patch.lastName = body.lastName
   }
   if (body.phone !== undefined) {
-    patch.phone = emptyToNull(body.phone)
+    patch.phone = normalizeTanzanianPhone(String(body.phone))
   }
   if (body.email !== undefined) {
-    patch.email = emptyToNull(body.email)
+    patch.email = String(body.email).trim().toLowerCase()
   }
+  if (body.dateOfBirth !== undefined) patch.dateOfBirth = body.dateOfBirth
+  if (body.sex !== undefined) patch.sex = body.sex
+  if (body.address !== undefined) patch.address = body.address
+  if (body.weightKg !== undefined) patch.weightKg = body.weightKg.toFixed(2)
+  if (body.smsConsent !== undefined) patch.smsConsent = body.smsConsent
+  if (body.emailConsent !== undefined) patch.emailConsent = body.emailConsent
   if (body.eligibilityStatus !== undefined) {
     patch.eligibilityStatus = body.eligibilityStatus
   }
@@ -485,7 +581,8 @@ export async function deactivateDonor(
   }
 
   if (existing.donor.active === false) {
-    return toPublicOrThrow(existing)
+    const stats = await loadDonationStats(db, [donorId])
+    return serializeDonor(existing, stats.get(donorId))
   }
 
   await db

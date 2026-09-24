@@ -33,14 +33,6 @@ export default [
         route("blood-requests/new", "routes/blood-requests.new.tsx"),
         route("blood-requests/:id", "routes/blood-requests.$id.tsx"),
 
-        route("predictions", "routes/predictions._index.tsx"),
-        route("predictions/:id", "routes/predictions.$id.tsx"),
-        route("ai-reports", "routes/ai-reports._index.tsx"),
-        route("ai-reports/:id", "routes/ai-reports.$id.tsx"),
-
-        route("alerts", "routes/alerts._index.tsx"),
-        route("alerts/:id", "routes/alerts.$id.tsx"),
-
         route("notifications", "routes/notifications._index.tsx"),
         route("notifications/new", "routes/notifications.new.tsx"),
 
@@ -50,7 +42,6 @@ export default [
         route("admin/users/new", "routes/admin.users.new.tsx"),
         route("admin/users/:id", "routes/admin.users.$id.tsx"),
         route("admin/facilities", "routes/admin.facilities.tsx"),
-        route("admin/roles", "routes/admin.roles.tsx"),
         route("admin/activity", "routes/admin.activity.tsx"),
     ]),
 ] satisfies RouteConfig;

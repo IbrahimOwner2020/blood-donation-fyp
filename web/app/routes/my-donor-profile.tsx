@@ -22,7 +22,7 @@ import { listOwnDonorDonations, updateOwnDonor } from "~/lib/me-donor";
 import type { PublicDonation } from "~/lib/donations";
 
 export const meta: MetaFunction = () => [
-  { title: "My donor profile · NBTS Blood AI" },
+  { title: "My donor profile · Blood Donation Management System" },
 ];
 
 type LoaderData =

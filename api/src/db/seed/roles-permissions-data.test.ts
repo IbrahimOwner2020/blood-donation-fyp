@@ -16,26 +16,24 @@ describe('seeded role and permission catalogue', () => {
     expect(PERMISSION_CODES).toContain('roles:assign:facility')
   })
 
-  test('seeds the facility operations role catalogue', () => {
-    expect(ROLE_NAMES).toContain('Facility Manager')
-    expect(ROLE_NAMES).toContain('Donor Manager')
-    expect(ROLE_NAMES).toContain('Blood Collector')
-    expect(ROLE_NAMES).toContain('Blood Bank Manager')
-    expect(ROLE_NAMES).toContain('Doctor')
+  test('seeds exactly the fixed four-role catalogue', () => {
+    expect([...ROLE_NAMES]).toEqual([
+      'Administrator',
+      'Blood Bank Staff',
+      'Hospital Staff',
+      'Registered Donor',
+    ])
   })
 
   test('facility manager can assign only roles without system-level powers', () => {
     const allowed = new Set<string>(FACILITY_ASSIGNABLE_PERMISSION_CODES)
 
-    expect(isFacilityAssignableRoleName('System Administrator')).toBe(false)
-    expect(isFacilityAssignableRoleName('Facility Manager')).toBe(false)
+    expect(isFacilityAssignableRoleName('Administrator')).toBe(false)
+    expect(isFacilityAssignableRoleName('Blood Bank Staff')).toBe(false)
 
     for (const roleName of [
-      'Donor Manager',
-      'Blood Collector',
-      'Blood Bank Manager',
-      'Doctor',
       'Hospital Staff',
+      'Registered Donor',
     ] as const) {
       expect(isFacilityAssignableRoleName(roleName)).toBe(true)
       const codes = ROLE_PERMISSION_MAP[roleName] ?? []

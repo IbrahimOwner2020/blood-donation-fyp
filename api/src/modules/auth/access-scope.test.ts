@@ -27,16 +27,16 @@ describe('hospital facility scope', () => {
     expect(isHospitalStaff(['Registered Donor'])).toBe(false)
   })
 
-  test('detects Facility Manager and facility-assignable role names', () => {
+  test('uses the fixed facility-scoped role names', () => {
     expect(isFacilityManager([FACILITY_MANAGER_ROLE])).toBe(true)
-    expect(isFacilityAssignableRoleName('Doctor')).toBe(true)
-    expect(isFacilityAssignableRoleName('System Administrator')).toBe(false)
-    expect(isFacilityAssignableRoleName('Facility Manager')).toBe(false)
+    expect(isFacilityAssignableRoleName('Hospital Staff')).toBe(true)
+    expect(isFacilityAssignableRoleName('Registered Donor')).toBe(true)
+    expect(isFacilityAssignableRoleName('Administrator')).toBe(false)
   })
 
   test('returns facility id only for hospital users', () => {
     expect(requireHospitalFacilityId(activeUser, [HOSPITAL_STAFF_ROLE])).toBe(3)
-    expect(requireHospitalFacilityId(activeUser, ['System Administrator'])).toBeUndefined()
+    expect(requireHospitalFacilityId(activeUser, ['Administrator'])).toBeUndefined()
   })
 
   test('rejects hospital users without assigned facility', () => {

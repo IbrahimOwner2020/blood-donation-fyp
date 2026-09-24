@@ -14,6 +14,15 @@ export const donorEligibilityStatuses = [
 ] as const
 export type DonorEligibilityStatus = (typeof donorEligibilityStatuses)[number]
 
+export const donorSexes = ['MALE', 'FEMALE'] as const
+export type DonorSex = (typeof donorSexes)[number]
+
+export const donationCategories = [
+  'VOLUNTARY',
+  'FAMILY_REPLACEMENT',
+] as const
+export type DonationCategory = (typeof donationCategories)[number]
+
 export const inventoryStatuses = [
   'AVAILABLE',
   'RESERVED',

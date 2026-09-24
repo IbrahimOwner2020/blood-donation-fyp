@@ -36,7 +36,7 @@ import {
 } from "~/lib/donors";
 
 export const meta: MetaFunction = () => [
-  { title: "Edit donor · NBTS Blood AI" },
+  { title: "Edit donor · Blood Donation Management System" },
 ];
 
 type DonorEditLoaderData =
@@ -100,7 +100,7 @@ export async function clientLoader({
       session,
       donorId: donorIdParam,
       message:
-        "Your session does not include donors:update. The API remains the access authority.",
+        "Your session does not include donors:update. The server remains the access authority.",
     };
   }
 
@@ -177,6 +177,10 @@ export async function clientAction({
   const lastName = String(formData.get("lastName") || "").trim();
   const phone = emptyToNull(String(formData.get("phone") || ""));
   const email = emptyToNull(String(formData.get("email") || ""));
+  const dateOfBirth = String(formData.get("dateOfBirth") || "").trim();
+  const sex = String(formData.get("sex") || "").trim();
+  const address = String(formData.get("address") || "").trim();
+  const weightKg = Number(formData.get("weightKg"));
   const bloodGroupId = parsePositiveInt(
     String(formData.get("bloodGroupId") || ""),
   );
@@ -185,9 +189,9 @@ export async function clientAction({
   );
   const active = formData.get("active") === "true";
 
-  if (!donorNumber || !firstName || !lastName || !Number.isFinite(bloodGroupId)) {
+  if (!donorNumber || !firstName || !lastName || !phone || !email || !dateOfBirth || !address || !Number.isFinite(weightKg) || (sex !== "MALE" && sex !== "FEMALE") || !Number.isFinite(bloodGroupId)) {
     return {
-      error: "Donor number, names, and blood group are required.",
+      error: "Membership number and all donor profile fields are required.",
     } satisfies DonorEditActionData;
   }
 
@@ -198,6 +202,12 @@ export async function clientAction({
       lastName,
       phone,
       email,
+      dateOfBirth,
+      sex,
+      address,
+      weightKg,
+      smsConsent: formData.get("smsConsent") === "true",
+      emailConsent: formData.get("emailConsent") === "true",
       bloodGroupId,
       eligibilityStatus,
       active,
@@ -238,7 +248,7 @@ export default function DonorEditPage() {
             data.message ||
             "You do not have permission to edit donors (donors:update)."
           }
-          detail="UI gate only — the API enforces authorization."
+          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to={data.donorId ? `/donors/${data.donorId}` : "/donors"}
@@ -278,7 +288,7 @@ export default function DonorEditPage() {
         <PageHeader title="Edit donor" />
         <ErrorState
           title="Could not load donor"
-          message={data.message || "Unable to load donor from the API."}
+          message={data.message || "Unable to load donor from the server."}
         />
       </div>
     );
@@ -294,7 +304,7 @@ export default function DonorEditPage() {
     <div>
       <PageHeader
         title={`Edit ${formatDonorName(donor)}`}
-        description="Mutations post to the donors API. No client-side eligibility decisions."
+        description="Mutations post to the donors server. No client-side eligibility decisions."
         actions={
           <Link
             to={`/donors/${donor.id}`}
@@ -319,6 +329,7 @@ export default function DonorEditPage() {
           idPrefix="edit-donor"
           defaults={donor}
           showActive
+          showMembershipNumber
         />
         <div className="mt-6 flex flex-wrap gap-2">
           <button

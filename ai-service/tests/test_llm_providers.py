@@ -20,6 +20,7 @@ def test_ollama_provider_parses_chat_message() -> None:
         body = json.loads(request.content.decode())
         assert body["model"] == "phi4"
         assert body["format"] == "json"
+        assert body["think"] is False
         return httpx.Response(
             200,
             json={
@@ -44,6 +45,68 @@ def test_ollama_provider_parses_chat_message() -> None:
     assert result.provider == "ollama"
     assert result.model == "phi4"
     assert "predictions" in result.content
+
+
+def test_ollama_provider_uses_low_thinking_for_gpt_oss() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        assert body["model"] == "gpt-oss:20b"
+        assert body["think"] == "low"
+        return httpx.Response(
+            200,
+            json={"message": {"role": "assistant", "content": '{"answer":"ok"}'}},
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.Client(transport=transport, base_url="http://ollama.test")
+    provider = OllamaProvider(
+        base_url="http://ollama.test",
+        model="gpt-oss:20b",
+        client=client,
+    )
+
+    result = provider.complete([ChatMessage(role="user", content="question")])
+
+    assert result.content == '{"answer":"ok"}'
+
+
+def test_ollama_provider_maps_native_tool_call_to_content() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "thinking": "I should use approved guidance.",
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": "donation_guidance.lookup",
+                                "arguments": {"topic": "waiting_period"},
+                            }
+                        }
+                    ],
+                }
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.Client(transport=transport, base_url="http://ollama.test")
+    provider = OllamaProvider(
+        base_url="http://ollama.test",
+        model="gpt-oss:20b",
+        client=client,
+    )
+
+    result = provider.complete([ChatMessage(role="user", content="question")])
+
+    assert json.loads(result.content) == {
+        "tool_call": {
+            "name": "donation_guidance.lookup",
+            "arguments": {"topic": "waiting_period"},
+        }
+    }
 
 
 def test_ollama_provider_maps_http_errors() -> None:

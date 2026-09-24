@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -40,6 +41,9 @@ class OllamaProvider:
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": False,
             "format": "json",
+            # GPT-OSS does not accept boolean thinking controls. Keeping its
+            # reasoning level low leaves room for the final JSON response.
+            "think": "low" if self._model.lower().startswith("gpt-oss") else False,
             "options": {
                 "temperature": 0.1,
             },
@@ -94,6 +98,26 @@ class OllamaProvider:
         if isinstance(message, dict):
             raw = message.get("content")
             content = raw.strip() if isinstance(raw, str) else ""
+            if not content:
+                tool_calls = message.get("tool_calls")
+                first_call = tool_calls[0] if isinstance(tool_calls, list) and tool_calls else None
+                function = first_call.get("function") if isinstance(first_call, dict) else None
+                name = function.get("name") if isinstance(function, dict) else None
+                arguments = function.get("arguments", {}) if isinstance(function, dict) else {}
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
+                if isinstance(name, str) and name.strip():
+                    content = json.dumps(
+                        {
+                            "tool_call": {
+                                "name": name.strip(),
+                                "arguments": arguments if isinstance(arguments, dict) else {},
+                            }
+                        }
+                    )
         if not content and isinstance(body, dict):
             raw_response = body.get("response")
             content = raw_response.strip() if isinstance(raw_response, str) else ""

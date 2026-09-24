@@ -22,6 +22,8 @@ import { attachUserAccess } from '../../middleware/require-permission'
 import { requireAuth } from '../../middleware/require-auth'
 import { AuthAuditActions, recordActivity } from '../../services/audit'
 import { DonorAuditActions } from '../../services/audit'
+import { generateUniqueDonorNumber } from '../donors/service'
+import { normalizeTanzanianPhone } from '../donors/phone'
 import {
   clearSessionCookie,
   readSessionId,
@@ -154,24 +156,6 @@ function isDuplicateEntryError(error: unknown): boolean {
   )
 }
 
-async function generateUniqueDonorNumber(
-  db: ReturnType<typeof getDb>,
-): Promise<string> {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const suffix = crypto.randomUUID().replace(/-/g, '').slice(0, 10).toUpperCase()
-    const donorNumber = `DON-${suffix}`
-    const rows = await db
-      .select({ id: donors.id })
-      .from(donors)
-      .where(eq(donors.donorNumber, donorNumber))
-      .limit(1)
-    if (!rows?.[0]?.id) {
-      return donorNumber
-    }
-  }
-  throw AppError.internal('Failed to generate donor number')
-}
-
 function clientIp(c: { req: { header: (name: string) => string | undefined } }): string | null {
   const forwarded = c.req.header('x-forwarded-for')
   if (forwarded) {
@@ -271,9 +255,47 @@ authRoutes.post('/register-donor', async (c) => {
   const db = getDb()
   const ip = clientIp(c)
   const requestId = c.get('requestId') ?? null
+  const normalizedPhone = normalizeTanzanianPhone(body.phone)
 
   try {
     const created = await withTransaction(db, async (tx) => {
+      const existingUserRows = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, body.email))
+        .limit(1)
+      const existingDonorEmailRows = await tx
+        .select({ id: donors.id })
+        .from(donors)
+        .where(eq(donors.email, body.email))
+        .limit(1)
+
+      if (existingUserRows[0]?.id || existingDonorEmailRows[0]?.id) {
+        throw AppError.conflict('An account already exists with this email', [
+          {
+            path: 'email',
+            message: 'This email is already registered. Sign in instead, or use another email address.',
+            code: 'email_already_registered',
+          },
+        ])
+      }
+
+      const existingDonorPhoneRows = await tx
+        .select({ id: donors.id })
+        .from(donors)
+        .where(eq(donors.phone, normalizedPhone))
+        .limit(1)
+
+      if (existingDonorPhoneRows[0]?.id) {
+        throw AppError.conflict('A donor already exists with this phone number', [
+          {
+            path: 'phone',
+            message: 'This phone number is already linked to a donor. Sign in with the existing account or contact blood bank staff.',
+            code: 'phone_already_registered',
+          },
+        ])
+      }
+
       const bloodGroupRows = await tx
         .select({ id: bloodGroups.id })
         .from(bloodGroups)
@@ -305,7 +327,7 @@ authRoutes.post('/register-donor', async (c) => {
       const passwordHash = await hashPassword(body.password)
 
       await tx.insert(users).values({
-        name: body.name,
+        name: `${body.firstName} ${body.lastName}`,
         email: body.email,
         passwordHash,
         facilityId: null,
@@ -331,8 +353,14 @@ authRoutes.post('/register-donor', async (c) => {
           donorNumber,
           firstName: body.firstName,
           lastName: body.lastName,
-          phone: body.phone,
+          phone: normalizedPhone,
           email: body.email,
+          dateOfBirth: body.dateOfBirth,
+          sex: body.sex,
+          address: body.address,
+          weightKg: body.weightKg.toFixed(2),
+          smsConsent: body.smsConsent,
+          emailConsent: body.emailConsent,
           bloodGroupId: body.bloodGroupId,
           eligibilityStatus: 'UNKNOWN',
           active: true,
@@ -394,10 +422,10 @@ authRoutes.post('/register-donor', async (c) => {
       throw error
     }
     if (isDuplicateEntryError(error)) {
-      throw AppError.conflict('Email or phone is already registered', [
+      throw AppError.conflict('This donor is already registered', [
         {
           path: 'email',
-          message: 'Email or phone is already registered',
+          message: 'An account with this email or phone already exists. Sign in instead, or contact blood bank staff.',
           code: 'duplicate_registration',
         },
       ])

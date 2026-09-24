@@ -1,7 +1,9 @@
 import {
   date,
+  decimal,
   index,
   int,
+  mysqlEnum,
   mysqlTable,
   text,
   timestamp,
@@ -11,6 +13,7 @@ import { bloodGroups } from './blood-groups'
 import { donationCentres } from './donation-centres'
 import { donors } from './donors'
 import { users } from './users'
+import { donationCategories } from './enums'
 
 export const donations = mysqlTable(
   'donations',
@@ -26,6 +29,13 @@ export const donations = mysqlTable(
       .notNull()
       .references(() => bloodGroups.id),
     donationDate: date('donation_date').notNull(),
+    category: mysqlEnum('category', donationCategories)
+      .notNull()
+      .default('VOLUNTARY'),
+    weightKgAtDonation: decimal('weight_kg_at_donation', {
+      precision: 5,
+      scale: 2,
+    }),
     units: int('units').notNull().default(1),
     notes: text('notes'),
     createdBy: int('created_by')

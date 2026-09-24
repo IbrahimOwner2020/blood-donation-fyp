@@ -7,6 +7,7 @@ import {
   and,
   asc,
   count,
+  desc,
   eq,
   gte,
   inArray,
@@ -25,6 +26,9 @@ import {
   healthcareFacilities,
 } from '../../db/schema'
 import { AppError } from '../../lib/errors'
+import { calculateDonorEligibility } from '../donors/eligibility'
+import { normalizeTanzanianPhone } from '../donors/phone'
+import { generateUniqueDonorNumber } from '../donors/service'
 import type {
   CreateDonationBody,
   ListDonationsQuery,
@@ -56,6 +60,8 @@ function mapDonationRow(row: typeof donations.$inferSelect): DonationRow {
     donationCentreId: row.donationCentreId,
     bloodGroupId: row.bloodGroupId,
     donationDate: row.donationDate,
+    category: row.category,
+    weightKgAtDonation: row.weightKgAtDonation,
     units: row.units,
     notes: row.notes ?? null,
     createdBy: row.createdBy,
@@ -155,6 +161,13 @@ async function requireActiveDonor(
   bloodGroupId: number
   active: boolean
   summary: DonorSummaryRow
+  dateOfBirth: string | null
+  sex: 'MALE' | 'FEMALE' | null
+  address: string | null
+  phone: string | null
+  email: string | null
+  weightKg: number | null
+  eligibilityStatus: string
 }> {
   const rows = await db
     .select()
@@ -193,6 +206,13 @@ async function requireActiveDonor(
     bloodGroupId: row.bloodGroupId,
     active: Boolean(row.active),
     summary,
+    dateOfBirth: row.dateOfBirth ?? null,
+    sex: row.sex ?? null,
+    address: row.address ?? null,
+    phone: row.phone ?? null,
+    email: row.email ?? null,
+    weightKg: row.weightKg === null ? null : Number(row.weightKg),
+    eligibilityStatus: row.eligibilityStatus,
   }
 }
 
@@ -493,7 +513,34 @@ export async function createDonation(
   const expiryDate = computeExpiryDate(donationDate)
 
   return withTransaction(db, async (tx) => {
-    const donor = await requireActiveDonor(tx, body.donorId)
+    let donorId = body.donorId
+    const newDonorInput = body.newDonor
+    if (body.newDonor) {
+      const donorNumber = await generateUniqueDonorNumber(tx)
+      const insertedDonor = await tx
+        .insert(donors)
+        .values({
+          donorNumber,
+          firstName: body.newDonor.firstName,
+          lastName: body.newDonor.lastName,
+          phone: normalizeTanzanianPhone(String(body.newDonor.phone)),
+          email: String(body.newDonor.email).trim().toLowerCase(),
+          dateOfBirth: body.newDonor.dateOfBirth,
+          sex: body.newDonor.sex,
+          address: body.newDonor.address,
+          weightKg: body.newDonor.weightKg.toFixed(2),
+          smsConsent: body.newDonor.smsConsent,
+          emailConsent: body.newDonor.emailConsent,
+          bloodGroupId: body.newDonor.bloodGroupId,
+          eligibilityStatus: 'UNKNOWN',
+          active: true,
+        })
+        .$returningId()
+      donorId = insertedDonor[0]?.id
+      if (!donorId) throw AppError.internal('Failed to create donor')
+    }
+    if (!donorId) throw AppError.validation('Select or register a donor')
+    const donor = await requireActiveDonor(tx, donorId)
     const centre = await requireActiveCentre(tx, body.donationCentreId)
     const bloodGroup = await requireBloodGroup(tx, body.bloodGroupId)
     const facilityId = await requireFacilityIfProvided(tx, body.facilityId)
@@ -511,6 +558,45 @@ export async function createDonation(
       )
     }
 
+    const [lastDonation] = await tx
+      .select({ donationDate: donations.donationDate })
+      .from(donations)
+      .where(eq(donations.donorId, donor.id))
+      .orderBy(desc(donations.donationDate), desc(donations.id))
+      .limit(1)
+    const eligibility = calculateDonorEligibility({
+      active: donor.active,
+      dateOfBirth: newDonorInput?.dateOfBirth ?? donor.dateOfBirth,
+      sex: newDonorInput?.sex ?? donor.sex,
+      weightKg: body.weightKgAtDonation,
+      address: newDonorInput?.address ?? donor.address,
+      phone: newDonorInput?.phone ? String(newDonorInput.phone) : donor.phone,
+      email: newDonorInput?.email ? String(newDonorInput.email) : donor.email,
+      lastDonationDate: lastDonation?.donationDate ?? null,
+      today: body.donationDate,
+    })
+    if (eligibility.status !== 'ELIGIBLE') {
+      throw AppError.validation('Donor is not preliminarily eligible', [
+        {
+          path: 'donorId',
+          message: eligibility.reasons.join('; '),
+          code: eligibility.status.toLowerCase(),
+        },
+      ])
+    }
+    if (
+      donor.eligibilityStatus === 'INELIGIBLE' ||
+      donor.eligibilityStatus === 'TEMPORARILY_INELIGIBLE'
+    ) {
+      throw AppError.validation('Donor is not cleared for donation', [
+        {
+          path: 'donorId',
+          message: 'Resolve the donor eligibility status before recording a donation',
+          code: 'donor_not_cleared',
+        },
+      ])
+    }
+
     const inserted = await tx
       .insert(donations)
       .values({
@@ -518,6 +604,8 @@ export async function createDonation(
         donationCentreId: centre.id,
         bloodGroupId: bloodGroup.id,
         donationDate,
+        category: body.category,
+        weightKgAtDonation: body.weightKgAtDonation.toFixed(2),
         units,
         notes,
         createdBy: createdByUserId,

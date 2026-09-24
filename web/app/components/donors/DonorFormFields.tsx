@@ -18,6 +18,12 @@ export type DonorFormDefaults = {
   lastName?: string;
   phone?: string;
   email?: string;
+  dateOfBirth?: string;
+  sex?: string;
+  address?: string;
+  weightKg?: number;
+  smsConsent?: boolean;
+  emailConsent?: boolean;
   bloodGroupId?: number;
   eligibilityStatus?: string;
   active?: boolean;
@@ -27,12 +33,14 @@ type DonorFormFieldsProps = {
   defaults?: DonorFormDefaults | PublicDonor | null;
   /** When true, include active checkbox (edit / soft-reactivate). */
   showActive?: boolean;
+  showMembershipNumber?: boolean;
   idPrefix?: string;
 };
 
 export function DonorFormFields({
   defaults = null,
   showActive = false,
+  showMembershipNumber = false,
   idPrefix = "donor",
 }: DonorFormFieldsProps = {}) {
   const donorNumber = defaults?.donorNumber ?? "";
@@ -40,6 +48,10 @@ export function DonorFormFields({
   const lastName = defaults?.lastName ?? "";
   const phone = defaults?.phone ?? "";
   const email = defaults?.email ?? "";
+  const dateOfBirth = defaults?.dateOfBirth ?? "";
+  const sex = defaults?.sex ?? "";
+  const address = defaults?.address ?? "";
+  const weightKg = defaults?.weightKg ?? "";
   const bloodGroupId =
     typeof defaults?.bloodGroupId === "number" ? defaults.bloodGroupId : "";
   const eligibilityStatus = defaults?.eligibilityStatus || "UNKNOWN";
@@ -47,18 +59,24 @@ export function DonorFormFields({
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <Input
-        id={`${idPrefix}-number`}
-        name="donorNumber"
-        type="text"
-        label="Donor number"
-        required
-        maxLength={64}
-        defaultValue={donorNumber}
-        autoComplete="off"
-        className="bg-white"
-        wrapperClassName="sm:col-span-2"
-      />
+      {showMembershipNumber ? (
+        <Input
+          id={`${idPrefix}-number`}
+          name="donorNumber"
+          type="text"
+          label="Membership number"
+          required
+          maxLength={64}
+          defaultValue={donorNumber}
+          autoComplete="off"
+          className="bg-white"
+          wrapperClassName="sm:col-span-2"
+        />
+      ) : (
+        <p className="text-sm text-nbts-muted sm:col-span-2">
+          A unique membership number will be generated automatically.
+        </p>
+      )}
 
       <Input
         id={`${idPrefix}-first-name`}
@@ -89,6 +107,7 @@ export function DonorFormFields({
         name="phone"
         type="tel"
         label="Phone"
+        required
         maxLength={32}
         defaultValue={phone || ""}
         autoComplete="tel"
@@ -100,11 +119,24 @@ export function DonorFormFields({
         name="email"
         type="email"
         label="Email"
+        required
         maxLength={255}
         defaultValue={email || ""}
         autoComplete="email"
         className="bg-white"
       />
+
+      <Input id={`${idPrefix}-dob`} name="dateOfBirth" type="date" label="Date of birth" required defaultValue={dateOfBirth || ""} className="bg-white" />
+
+      <Select id={`${idPrefix}-sex`} name="sex" label="Sex" required defaultValue={sex} className="bg-white">
+        <option value="" disabled>Select sex</option>
+        <option value="MALE">Male</option>
+        <option value="FEMALE">Female</option>
+      </Select>
+
+      <Input id={`${idPrefix}-weight`} name="weightKg" type="number" label="Current weight (kg)" required min={1} max={300} step="0.1" defaultValue={weightKg} className="bg-white" />
+
+      <Input id={`${idPrefix}-address`} name="address" type="text" label="Address" required maxLength={1000} defaultValue={address || ""} autoComplete="street-address" className="bg-white" wrapperClassName="sm:col-span-2" />
 
       <Select
         id={`${idPrefix}-blood-group`}
@@ -123,6 +155,15 @@ export function DonorFormFields({
           </option>
         ))}
       </Select>
+
+      <label className="flex items-center gap-2 text-sm">
+        <input name="smsConsent" type="checkbox" value="true" defaultChecked={defaults?.smsConsent === true} />
+        <span>Donor consents to SMS reminders</span>
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input name="emailConsent" type="checkbox" value="true" defaultChecked={defaults?.emailConsent === true} />
+        <span>Donor consents to email reminders</span>
+      </label>
 
       <Select
         id={`${idPrefix}-eligibility`}

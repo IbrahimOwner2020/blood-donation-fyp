@@ -44,6 +44,8 @@ export type PublicDonation = {
   bloodGroup: PublicBloodGroup | null;
   /** Calendar date YYYY-MM-DD */
   donationDate: string;
+  category: "VOLUNTARY" | "FAMILY_REPLACEMENT";
+  weightKgAtDonation: number | null;
   units: number;
   notes: string | null;
   createdBy: number;
@@ -77,10 +79,25 @@ export type ListDonationCentresParams = {
 };
 
 export type CreateDonationInput = {
-  donorId: number;
+  donorId?: number;
+  newDonor?: {
+    firstName: string;
+    lastName: string;
+    phone: string;
+    email: string;
+    dateOfBirth: string;
+    sex: "MALE" | "FEMALE";
+    address: string;
+    weightKg: number;
+    smsConsent: boolean;
+    emailConsent: boolean;
+    bloodGroupId: number;
+  };
   donationCentreId: number;
   bloodGroupId: number;
   donationDate: string;
+  category: "VOLUNTARY" | "FAMILY_REPLACEMENT";
+  weightKgAtDonation: number;
   units?: number;
   notes?: string | null;
   facilityId?: number | null;
@@ -108,6 +125,12 @@ function toNullableString(value: unknown): string | null {
     return trimmed.length > 0 ? trimmed : null;
   }
   return null;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function toDateOnlyString(value: unknown): string {
@@ -235,6 +258,11 @@ export function normalizeDonation(value: unknown): PublicDonation | null {
     bloodGroupId,
     bloodGroup: normalizeBloodGroup(value.bloodGroup),
     donationDate: toDateOnlyString(value.donationDate),
+    category:
+      value.category === "FAMILY_REPLACEMENT"
+        ? "FAMILY_REPLACEMENT"
+        : "VOLUNTARY",
+    weightKgAtDonation: toNullableNumber(value.weightKgAtDonation),
     units,
     notes: toNullableString(value.notes),
     createdBy,
@@ -374,11 +402,15 @@ export async function createDonation(
   input: CreateDonationInput,
 ): Promise<PublicDonation> {
   const body: Record<string, unknown> = {
-    donorId: input.donorId,
     donationCentreId: input.donationCentreId,
     bloodGroupId: input.bloodGroupId,
     donationDate: input.donationDate?.trim() || "",
+    category: input.category,
+    weightKgAtDonation: input.weightKgAtDonation,
   };
+
+  if (input.donorId) body.donorId = input.donorId;
+  if (input.newDonor) body.newDonor = input.newDonor;
 
   if (typeof input.units === "number" && Number.isFinite(input.units)) {
     body.units = input.units;

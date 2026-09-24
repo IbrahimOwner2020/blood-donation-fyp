@@ -32,6 +32,8 @@ export type PublicDonation = {
   bloodGroup: PublicBloodGroup | null
   /** Calendar date YYYY-MM-DD */
   donationDate: string
+  category: 'VOLUNTARY' | 'FAMILY_REPLACEMENT'
+  weightKgAtDonation: number | null
   units: number
   notes: string | null
   createdBy: number
@@ -47,6 +49,8 @@ export type DonationRow = {
   donationCentreId: number
   bloodGroupId: number
   donationDate: Date | string
+  category?: 'VOLUNTARY' | 'FAMILY_REPLACEMENT'
+  weightKgAtDonation?: string | number | null
   units: number
   notes: string | null
   createdBy: number
@@ -159,6 +163,12 @@ export function toPublicDonation(
     bloodGroupId: donation.bloodGroupId,
     bloodGroup: toPublicBloodGroup(relations.bloodGroup),
     donationDate: toDateOnlyString(donation.donationDate),
+    category: donation.category ?? 'VOLUNTARY',
+    weightKgAtDonation:
+      donation.weightKgAtDonation === null ||
+      donation.weightKgAtDonation === undefined
+        ? null
+        : Number(donation.weightKgAtDonation),
     units: donation.units ?? 1,
     notes: donation.notes ?? null,
     createdBy: donation.createdBy,

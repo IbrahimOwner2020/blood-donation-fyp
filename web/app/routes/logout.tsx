@@ -13,7 +13,7 @@ import {
 
 /**
  * Clear leftover web-shell mock cookie on the web origin (HttpOnly).
- * Real session cookie is cleared by the API logout endpoint.
+ * Real session cookie is cleared by the server logout endpoint.
  */
 export async function action(_args: ActionFunctionArgs) {
   return redirect("/login", {
@@ -31,8 +31,8 @@ export async function clientAction({
 }
 
 /**
- * GET /logout — revoke API session in the browser, then land on login.
- * (API cookie is host-scoped to the API origin; only a client fetch can send it.)
+ * GET /logout — revoke server session in the browser, then land on login.
+ * (server cookie is host-scoped to the server origin; only a client fetch can send it.)
  */
 export async function clientLoader(_args: ClientLoaderFunctionArgs) {
   await logoutFromApi();

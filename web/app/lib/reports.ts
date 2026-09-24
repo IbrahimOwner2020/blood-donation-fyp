@@ -64,53 +64,34 @@ export type DonationsReport = {
   byDate: Array<{ date: string; donationCount: number; units: number }>;
 };
 
-export type DemandReport = {
-  report: "demand";
+export type BloodRequestsReport = {
+  report: "blood-requests";
   totals: {
     unitsRequested: number;
-    unitsIssued: number;
-    unitsUsed: number;
+    fulfilledUnits: number;
     unfulfilledUnits: number;
-    recordCount: number;
+    requestCount: number;
   };
   byBloodGroup: Array<{
     bloodGroupId: number;
     bloodGroup: PublicBloodGroup | null;
     unitsRequested: number;
-    unitsIssued: number;
-    unitsUsed: number;
+    fulfilledUnits: number;
     unfulfilledUnits: number;
+    requestCount: number;
   }>;
   byDate: Array<{
     date: string;
     unitsRequested: number;
-    unitsIssued: number;
-    unitsUsed: number;
+    fulfilledUnits: number;
     unfulfilledUnits: number;
   }>;
 };
 
-export type PredictionsReport = {
-  report: "predictions";
-  totals: { runCount: number; predictedUnits: number };
-  byBloodGroup: Array<{
-    bloodGroupId: number;
-    bloodGroup: PublicBloodGroup | null;
-    runCount: number;
-    predictedUnits: number;
-  }>;
-  recent: Array<{
-    id: number;
-    bloodGroupId: number;
-    bloodGroup: PublicBloodGroup | null;
-    facilityId: number | null;
-    forecastStart: string;
-    forecastEnd: string;
-    predictedUnits: number;
-    modelName: string;
-    modelVersion: string | null;
-    createdAt: string;
-  }>;
+export type DonorEligibilityReport = {
+  report: "donor-eligibility";
+  totals: { total: number; eligible: number; waitingPeriod: number; profileIncomplete: number; otherIneligible: number };
+  donors: Array<{ donorId: number; donorNumber: string; name: string; bloodGroup: PublicBloodGroup | null; donationCount: number; lastDonationDate: string | null; nextEligibleDate: string | null; daysUntilEligible: number | null; status: string; reasons: string[] }>;
 };
 
 export type NotificationsReport = {
@@ -332,7 +313,7 @@ function normalizeDonationsReport(data: unknown): DonationsReport | null {
   };
 }
 
-function normalizeDemandReport(data: unknown): DemandReport | null {
+function normalizeBloodRequestsReport(data: unknown): BloodRequestsReport | null {
   if (!isRecord(data)) {
     return null;
   }
@@ -342,13 +323,12 @@ function normalizeDemandReport(data: unknown): DemandReport | null {
     : [];
   const byDate = Array.isArray(data.byDate) ? data.byDate : [];
   return {
-    report: "demand",
+    report: "blood-requests",
     totals: {
       unitsRequested: toFiniteNumber(totals.unitsRequested),
-      unitsIssued: toFiniteNumber(totals.unitsIssued),
-      unitsUsed: toFiniteNumber(totals.unitsUsed),
+      fulfilledUnits: toFiniteNumber(totals.fulfilledUnits),
       unfulfilledUnits: toFiniteNumber(totals.unfulfilledUnits),
-      recordCount: toFiniteNumber(totals.recordCount),
+      requestCount: toFiniteNumber(totals.requestCount),
     },
     byBloodGroup: byBloodGroup
       .map((row) => {
@@ -363,13 +343,13 @@ function normalizeDemandReport(data: unknown): DemandReport | null {
           bloodGroupId,
           bloodGroup: normalizeBloodGroup(row.bloodGroup),
           unitsRequested: toFiniteNumber(row.unitsRequested),
-          unitsIssued: toFiniteNumber(row.unitsIssued),
-          unitsUsed: toFiniteNumber(row.unitsUsed),
+          fulfilledUnits: toFiniteNumber(row.fulfilledUnits),
           unfulfilledUnits: toFiniteNumber(row.unfulfilledUnits),
+          requestCount: toFiniteNumber(row.requestCount),
         };
       })
       .filter(
-        (row): row is DemandReport["byBloodGroup"][number] => row !== null,
+        (row): row is BloodRequestsReport["byBloodGroup"][number] => row !== null,
       ),
     byDate: byDate
       .map((row) => {
@@ -383,88 +363,21 @@ function normalizeDemandReport(data: unknown): DemandReport | null {
         return {
           date,
           unitsRequested: toFiniteNumber(row.unitsRequested),
-          unitsIssued: toFiniteNumber(row.unitsIssued),
-          unitsUsed: toFiniteNumber(row.unitsUsed),
+          fulfilledUnits: toFiniteNumber(row.fulfilledUnits),
           unfulfilledUnits: toFiniteNumber(row.unfulfilledUnits),
         };
       })
-      .filter((row): row is DemandReport["byDate"][number] => row !== null),
+      .filter((row): row is BloodRequestsReport["byDate"][number] => row !== null),
   };
 }
 
-function normalizePredictionsReport(data: unknown): PredictionsReport | null {
-  if (!isRecord(data)) {
-    return null;
-  }
-  const totals = isRecord(data.totals) ? data.totals : {};
-  const byBloodGroup = Array.isArray(data.byBloodGroup)
-    ? data.byBloodGroup
-    : [];
-  const recent = Array.isArray(data.recent) ? data.recent : [];
+function normalizeDonorEligibilityReport(data: unknown): DonorEligibilityReport | null {
+  if (!isRecord(data) || !isRecord(data.totals) || !Array.isArray(data.donors)) return null;
+  const totals = data.totals;
   return {
-    report: "predictions",
-    totals: {
-      runCount: toFiniteNumber(totals.runCount),
-      predictedUnits: toFiniteNumber(totals.predictedUnits),
-    },
-    byBloodGroup: byBloodGroup
-      .map((row) => {
-        if (!isRecord(row)) {
-          return null;
-        }
-        const bloodGroupId = toFiniteNumber(row.bloodGroupId, NaN);
-        if (!Number.isFinite(bloodGroupId) || bloodGroupId <= 0) {
-          return null;
-        }
-        return {
-          bloodGroupId,
-          bloodGroup: normalizeBloodGroup(row.bloodGroup),
-          runCount: toFiniteNumber(row.runCount),
-          predictedUnits: toFiniteNumber(row.predictedUnits),
-        };
-      })
-      .filter(
-        (
-          row,
-        ): row is PredictionsReport["byBloodGroup"][number] => row !== null,
-      ),
-    recent: recent
-      .map((row) => {
-        if (!isRecord(row)) {
-          return null;
-        }
-        const id = toFiniteNumber(row.id, NaN);
-        const bloodGroupId = toFiniteNumber(row.bloodGroupId, NaN);
-        if (
-          !Number.isFinite(id) ||
-          id <= 0 ||
-          !Number.isFinite(bloodGroupId) ||
-          bloodGroupId <= 0
-        ) {
-          return null;
-        }
-        return {
-          id,
-          bloodGroupId,
-          bloodGroup: normalizeBloodGroup(row.bloodGroup),
-          facilityId:
-            typeof row.facilityId === "number" && Number.isFinite(row.facilityId)
-              ? row.facilityId
-              : null,
-          forecastStart:
-            typeof row.forecastStart === "string" ? row.forecastStart : "",
-          forecastEnd:
-            typeof row.forecastEnd === "string" ? row.forecastEnd : "",
-          predictedUnits: toFiniteNumber(row.predictedUnits),
-          modelName: typeof row.modelName === "string" ? row.modelName : "",
-          modelVersion:
-            typeof row.modelVersion === "string" ? row.modelVersion : null,
-          createdAt: typeof row.createdAt === "string" ? row.createdAt : "",
-        };
-      })
-      .filter(
-        (row): row is PredictionsReport["recent"][number] => row !== null,
-      ),
+    report: "donor-eligibility",
+    totals: { total: toFiniteNumber(totals.total), eligible: toFiniteNumber(totals.eligible), waitingPeriod: toFiniteNumber(totals.waitingPeriod), profileIncomplete: toFiniteNumber(totals.profileIncomplete), otherIneligible: toFiniteNumber(totals.otherIneligible) },
+    donors: data.donors.filter(isRecord).map((row) => ({ donorId: toFiniteNumber(row.donorId), donorNumber: String(row.donorNumber || ""), name: String(row.name || ""), bloodGroup: normalizeBloodGroup(row.bloodGroup), donationCount: toFiniteNumber(row.donationCount), lastDonationDate: typeof row.lastDonationDate === "string" ? row.lastDonationDate : null, nextEligibleDate: typeof row.nextEligibleDate === "string" ? row.nextEligibleDate : null, daysUntilEligible: row.daysUntilEligible === null ? null : toFiniteNumber(row.daysUntilEligible), status: String(row.status || ""), reasons: Array.isArray(row.reasons) ? row.reasons.filter((reason): reason is string => typeof reason === "string") : [] })),
   };
 }
 
@@ -616,26 +529,19 @@ export async function fetchDonationsReport(
   );
 }
 
-/** GET /reports/demand */
-export async function fetchDemandReport(
+/** GET /reports/blood-requests */
+export async function fetchBloodRequestsReport(
   params: ReportFilters = {},
-): Promise<ReportSectionStatus<DemandReport>> {
+): Promise<ReportSectionStatus<BloodRequestsReport>> {
   return fetchReportSection(
-    `/reports/demand${buildReportQuery(params)}`,
-    normalizeDemandReport,
-    "Demand report unavailable.",
+    `/reports/blood-requests${buildReportQuery(params)}`,
+    normalizeBloodRequestsReport,
+    "Blood requests report unavailable.",
   );
 }
 
-/** GET /reports/predictions */
-export async function fetchPredictionsReport(
-  params: ReportFilters = {},
-): Promise<ReportSectionStatus<PredictionsReport>> {
-  return fetchReportSection(
-    `/reports/predictions${buildReportQuery(params)}`,
-    normalizePredictionsReport,
-    "Predictions report unavailable.",
-  );
+export async function fetchDonorEligibilityReport(params: ReportFilters = {}): Promise<ReportSectionStatus<DonorEligibilityReport>> {
+  return fetchReportSection(`/reports/donor-eligibility${buildReportQuery({ bloodGroup: params.bloodGroup })}`, normalizeDonorEligibilityReport, "Donor eligibility report unavailable.");
 }
 
 /** GET /reports/notifications */

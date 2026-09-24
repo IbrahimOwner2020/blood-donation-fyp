@@ -5,6 +5,7 @@ import {
   mysqlTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from 'drizzle-orm/mysql-core'
 
@@ -28,6 +29,8 @@ export const notifications = mysqlTable(
       .notNull()
       .default('PENDING'),
     providerMessageId: varchar('provider_message_id', { length: 255 }),
+    deduplicationKey: varchar('deduplication_key', { length: 255 }),
+    deliveryError: varchar('delivery_error', { length: 500 }),
     sentAt: timestamp('sent_at'),
     createdBy: int('created_by')
       .notNull()
@@ -41,5 +44,6 @@ export const notifications = mysqlTable(
     ),
     index('notifications_alert_id_idx').on(table.alertId),
     index('notifications_status_idx').on(table.status),
+    uniqueIndex('notifications_deduplication_key_uidx').on(table.deduplicationKey),
   ],
 )

@@ -9,7 +9,7 @@ type EmptyStateProps = {
 
 export function EmptyState({
   title = "Nothing here yet",
-  description = "Data from the API will appear in this view when available.",
+  description = "Data from the server will appear in this view when available.",
   action,
   className = "",
 }: EmptyStateProps = {}) {

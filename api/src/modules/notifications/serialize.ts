@@ -27,6 +27,8 @@ export type PublicNotification = {
   message: string
   status: NotificationStatus
   providerMessageId: string | null
+  deduplicationKey: string | null
+  deliveryError: string | null
   sentAt: Date | null
   createdBy: number
   createdAt: Date
@@ -41,6 +43,8 @@ export type NotificationRow = {
   message: string
   status: NotificationStatus
   providerMessageId: string | null
+  deduplicationKey: string | null
+  deliveryError: string | null
   sentAt: Date | null
   createdBy: number
   createdAt: Date
@@ -114,6 +118,8 @@ export function toPublicNotification(
     message: row.message ?? '',
     status: row.status ?? 'PENDING',
     providerMessageId: row.providerMessageId ?? null,
+    deduplicationKey: row.deduplicationKey ?? null,
+    deliveryError: row.deliveryError ?? null,
     sentAt: row.sentAt ?? null,
     createdBy: row.createdBy,
     createdAt: row.createdAt,

@@ -16,10 +16,26 @@ const sampleDonor: PublicDonor = {
   lastName: "Mwangi",
   phone: "+255711111111",
   email: "asha@example.local",
+  dateOfBirth: "1990-01-01",
+  sex: "FEMALE",
+  address: "Dodoma",
+  weightKg: 60,
+  smsConsent: true,
+  emailConsent: true,
   bloodGroupId: 7,
   bloodGroup: { id: 7, code: "O+", abo: "O", rh: "+" },
   eligibilityStatus: "POTENTIALLY_ELIGIBLE",
   active: true,
+  donationCount: 2,
+  lastDonationDate: "2026-06-01",
+  preliminaryEligibility: {
+    status: "ELIGIBLE",
+    reasons: [],
+    profileComplete: true,
+    age: 36,
+    nextEligibleDate: "2026-10-01",
+    daysUntilEligible: 0,
+  },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -31,10 +47,11 @@ describe("donor form + formatters", () => {
         idPrefix="test-donor"
         defaults={sampleDonor}
         showActive
+        showMembershipNumber
       />,
     );
 
-    expect(screen.getByLabelText(/Donor number/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Membership number/i)).toBeTruthy();
     expect(screen.getByLabelText(/First name/i)).toBeTruthy();
     expect(screen.getByLabelText(/Last name/i)).toBeTruthy();
     expect(screen.getByLabelText(/Blood group/i)).toBeTruthy();

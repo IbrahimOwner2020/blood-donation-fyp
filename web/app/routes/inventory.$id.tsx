@@ -38,7 +38,7 @@ import {
 import { ApiRequestError } from "~/lib/api";
 
 export const meta: MetaFunction = () => [
-  { title: "Inventory unit · NBTS Blood AI" },
+  { title: "Inventory unit · Blood Donation Management System" },
 ];
 
 type InventoryDetailLoaderData =
@@ -97,7 +97,7 @@ export async function clientLoader({
       session,
       unitId: unitIdParam,
       message:
-        "Your session does not include inventory:read. The API remains the access authority.",
+        "Your session does not include inventory:read. The server remains the access authority.",
     };
   }
 
@@ -137,7 +137,7 @@ export async function clientLoader({
         unitId: unitIdParam,
         message: formatApiErrorMessage(
           error,
-          "Inventory unit not found (or inventory API not mounted yet).",
+          "Inventory unit not found (or inventory server not mounted yet).",
         ),
       };
     }
@@ -148,7 +148,7 @@ export async function clientLoader({
         unitId: unitIdParam,
         message: formatApiErrorMessage(
           error,
-          "Inventory detail is not available yet. The inventory API may still be landing.",
+          "Inventory detail is not available yet. The inventory server may still be landing.",
         ),
       };
     }
@@ -227,7 +227,7 @@ export default function InventoryDetailPage() {
             data.message ||
             "You do not have permission to view inventory (inventory:read)."
           }
-          detail="UI gate only — the API enforces authorization."
+          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to="/inventory"
@@ -249,7 +249,7 @@ export default function InventoryDetailPage() {
           description="Unit detail from GET /inventory/:id."
         />
         <EmptyState
-          title="Inventory API not available yet"
+          title="Inventory server not available yet"
           description={data.message}
           action={
             <Link
@@ -290,7 +290,7 @@ export default function InventoryDetailPage() {
         <PageHeader title="Inventory unit" description="Unit detail." />
         <ErrorState
           title="Could not load unit"
-          message={data.message || "Unable to load inventory unit from the API."}
+          message={data.message || "Unable to load inventory unit from the server."}
         />
         <div className="mt-4">
           <Link
@@ -313,7 +313,7 @@ export default function InventoryDetailPage() {
     <div>
       <PageHeader
         title={`Inventory unit #${unit.id}`}
-        description="Status, dates, and facility assignment are API-owned. Expired units must be excluded from available stock by the API."
+        description="Status, dates, and facility assignment are server-owned. Expired units must be excluded from available stock by the server."
         actions={
           <Link
             to="/inventory"
@@ -403,7 +403,7 @@ export default function InventoryDetailPage() {
           <input type="hidden" name="intent" value="issue" />
           <h2 className="text-base font-semibold text-nbts-ink">Record usage</h2>
           <p className="mt-1 text-sm text-nbts-muted">
-            Marks this unit as issued through the inventory API.
+            Marks this unit as issued through the inventory server.
           </p>
           <button
             type="submit"

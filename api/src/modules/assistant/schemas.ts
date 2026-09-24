@@ -22,6 +22,10 @@ export const assistantMessageBodySchema = z
       .min(1, 'message is required')
       .max(2000, 'message must be at most 2000 characters'),
     context: contextSchema,
+    history: z.array(z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.string().trim().min(1).max(2000),
+    })).max(10).optional().default([]),
   })
   .strict()
 
@@ -73,6 +77,7 @@ export type AssistantResultBody = z.infer<typeof assistantResultSchema>
 export const assistantChatRequestSchema = z.object({
   message: z.string().trim().min(1).max(2000),
   context: contextSchema,
+  history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().trim().min(1).max(2000) })).max(10).optional().default([]),
   permissions: z.array(permissionCodeSchema).max(100),
   toolSessionToken: z.string().trim().min(24).max(160),
   toolsUrl: z.string().url(),

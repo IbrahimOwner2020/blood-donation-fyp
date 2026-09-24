@@ -40,7 +40,7 @@ import {
 } from "~/lib/donations";
 
 export const meta: MetaFunction = () => [
-  { title: "Donation detail · NBTS Blood AI" },
+  { title: "Donation detail · Blood Donation Management System" },
 ];
 
 type DonationDetailLoaderData =
@@ -94,7 +94,7 @@ export async function clientLoader({
       session,
       donationId: donationIdParam,
       message:
-        "Your session does not include donations:read. The API remains the access authority.",
+        "Your session does not include donations:read. The server remains the access authority.",
     };
   }
 
@@ -241,7 +241,7 @@ export default function DonationDetailPage() {
             data.message ||
             "You do not have permission to view this donation (donations:read)."
           }
-          detail="UI gate only — the API enforces authorization."
+          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to="/donations"
@@ -281,7 +281,7 @@ export default function DonationDetailPage() {
         <PageHeader title="Donation" description="Donation detail." />
         <ErrorState
           title="Could not load donation"
-          message={data.message || "Unable to load donation from the API."}
+          message={data.message || "Unable to load donation from the server."}
         />
         <div className="mt-4">
           <Link
@@ -370,6 +370,8 @@ export default function DonationDetailPage() {
           </dt>
           <dd className="mt-1 text-sm text-nbts-ink">{donation.units}</dd>
         </div>
+        <div><dt className="text-xs font-semibold uppercase tracking-wide text-nbts-muted">Category</dt><dd className="mt-1 text-sm text-nbts-ink">{donation.category === "FAMILY_REPLACEMENT" ? "Family replacement" : "Voluntary"}</dd></div>
+        <div><dt className="text-xs font-semibold uppercase tracking-wide text-nbts-muted">Weight at donation</dt><dd className="mt-1 text-sm text-nbts-ink">{donation.weightKgAtDonation === null ? "—" : `${donation.weightKgAtDonation} kg`}</dd></div>
         <div>
           <dt className="text-xs font-semibold uppercase tracking-wide text-nbts-muted">
             Inventory units
@@ -413,7 +415,7 @@ export default function DonationDetailPage() {
           </h2>
           <p className="mt-1 text-sm text-nbts-muted">
             Donor, blood group, date, and units are immutable after inventory is
-            linked. API enforces this.
+            linked. server enforces this.
           </p>
           <Form method="post" className="mt-4 grid gap-4">
             <label className="flex flex-col gap-1 text-sm">

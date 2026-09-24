@@ -12,15 +12,20 @@ import {
   desc,
   eq,
   inArray,
+  max,
   type SQL,
 } from 'drizzle-orm'
 
 import type { Db } from '../../db'
 import {
   bloodGroups,
+  donations,
   donors,
   notifications,
+  roles,
   shortageAlerts,
+  userRoles,
+  users,
 } from '../../db/schema'
 import type {
   NotificationChannel,
@@ -48,6 +53,7 @@ import {
   type NotificationRow,
   type PublicNotification,
 } from './serialize'
+import { calculateDonorEligibility } from '../donors/eligibility'
 
 type LoadedNotification = {
   notification: NotificationRow
@@ -61,6 +67,8 @@ type DonorWithGroup = {
   lastName: string
   phone: string | null
   email: string | null
+  smsConsent: boolean
+  emailConsent: boolean
   active: boolean
   bloodGroupCode: string | null
 }
@@ -85,6 +93,8 @@ function mapNotificationRow(
     message: row.message,
     status: row.status,
     providerMessageId: row.providerMessageId ?? null,
+    deduplicationKey: row.deduplicationKey ?? null,
+    deliveryError: row.deliveryError ?? null,
     sentAt: row.sentAt ?? null,
     createdBy: row.createdBy,
     createdAt: row.createdAt,
@@ -273,6 +283,8 @@ async function loadDonorsForCompose(
       lastName: d.lastName ?? '',
       phone: d.phone ?? null,
       email: d.email ?? null,
+      smsConsent: d.smsConsent ?? false,
+      emailConsent: d.emailConsent ?? false,
       active: d.active ?? false,
       bloodGroupCode: row?.bloodGroup?.code ?? null,
     })
@@ -319,6 +331,22 @@ function buildPreviewItem(
       subject: null,
       alertId,
       skipReason: 'Donor is inactive',
+    }
+  }
+
+  if ((channel === 'SMS' && !donor.smsConsent) || (channel === 'EMAIL' && !donor.emailConsent)) {
+    return {
+      donorId: donor.id,
+      donorNumber: donor.donorNumber,
+      firstName: donor.firstName,
+      lastName: donor.lastName,
+      channel,
+      recipient: null,
+      recipientRedacted: null,
+      message: null,
+      subject: null,
+      alertId,
+      skipReason: `Donor has not consented to ${channel} notifications`,
     }
   }
 
@@ -564,6 +592,7 @@ export async function sendNotifications(
         status: deliveryStatus,
         providerMessageId,
         sentAt,
+        deliveryError: error,
       })
       .where(eq(notifications.id, insertId))
 
@@ -586,4 +615,106 @@ export async function sendNotifications(
     failedCount,
     skippedCount,
   }
+}
+
+export type EligibilityReminderRun = {
+  eligibleDonors: number
+  sentCount: number
+  failedCount: number
+  skippedCount: number
+}
+
+/** Daily, idempotent SMS + email reminders for consented eligible donors. */
+export async function runEligibilityReminders(
+  db: Db,
+  deps: NotificationServiceDeps = {},
+): Promise<EligibilityReminderRun> {
+  const today = (deps.now?.() ?? new Date()).toISOString().slice(0, 10)
+  const donorRows = await db.select().from(donors).where(eq(donors.active, true))
+  const donationRows = await db
+    .select({ donorId: donations.donorId, lastDonationDate: max(donations.donationDate) })
+    .from(donations)
+    .groupBy(donations.donorId)
+  const lastByDonor = new Map(donationRows.map((row) => [row.donorId, row.lastDonationDate ?? null]))
+  const [systemUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .innerJoin(userRoles, eq(users.id, userRoles.userId))
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(and(eq(users.status, 'ACTIVE'), eq(roles.name, 'Administrator')))
+    .limit(1)
+  if (!systemUser?.id) throw AppError.internal('An active Administrator is required for reminder audit ownership')
+
+  let eligibleDonors = 0
+  let sentCount = 0
+  let failedCount = 0
+  let skippedCount = 0
+  const getProvider = deps.getProvider ?? ((channel: NotificationChannel) => createNotificationProvider(channel))
+
+  for (const donor of donorRows) {
+    const lastDonationDate = lastByDonor.get(donor.id) ?? null
+    if (!lastDonationDate) continue
+    const eligibility = calculateDonorEligibility({
+      active: donor.active,
+      dateOfBirth: donor.dateOfBirth ?? null,
+      sex: donor.sex ?? null,
+      weightKg: donor.weightKg == null ? null : Number(donor.weightKg),
+      address: donor.address ?? null,
+      phone: donor.phone ?? null,
+      email: donor.email ?? null,
+      lastDonationDate,
+      today,
+    })
+    if (eligibility.status !== 'ELIGIBLE' || !eligibility.nextEligibleDate) continue
+    eligibleDonors += 1
+
+    const channels: NotificationChannel[] = []
+    if (donor.smsConsent && donor.phone) channels.push('SMS')
+    if (donor.emailConsent && donor.email) channels.push('EMAIL')
+    if (channels.length === 0) { skippedCount += 1; continue }
+
+    for (const channel of channels) {
+      const recipient = channel === 'SMS' ? donor.phone! : donor.email!
+      const deduplicationKey = `eligibility:${donor.id}:${channel}:${eligibility.nextEligibleDate}`
+      const [existing] = await db
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(eq(notifications.deduplicationKey, deduplicationKey))
+        .limit(1)
+      if (existing?.id) { skippedCount += 1; continue }
+
+      const message = `Hello ${donor.firstName}, you have reached your preliminary blood donation eligibility date. Please visit an approved centre for staff screening before donating.`
+      const inserted = await db.insert(notifications).values({
+        donorId: donor.id,
+        alertId: null,
+        channel,
+        recipient,
+        message,
+        status: 'PENDING',
+        deduplicationKey,
+        createdBy: systemUser.id,
+      }).$returningId()
+      const notificationId = inserted[0]?.id
+      if (!notificationId) throw AppError.internal('Failed to create reminder record')
+
+      const result = await getProvider(channel).send({
+        channel,
+        to: recipient,
+        body: message,
+        subject: channel === 'EMAIL' ? 'You may be eligible to donate blood again' : undefined,
+        metadata: { notificationId: String(notificationId), donorId: String(donor.id) },
+      })
+      const status: NotificationStatus = result.success && result.status === 'SENT' ? 'SENT' : 'FAILED'
+      if (status === 'SENT') sentCount += 1
+      else failedCount += 1
+      await db.update(notifications).set({
+        status,
+        providerMessageId: result.providerMessageId ?? null,
+        sentAt: result.sentAt ? new Date(result.sentAt) : status === 'SENT' ? (deps.now?.() ?? new Date()) : null,
+        deliveryError: result.error?.slice(0, 500) ?? null,
+      }).where(eq(notifications.id, notificationId))
+    }
+  }
+
+  return { eligibleDonors, sentCount, failedCount, skippedCount }
 }

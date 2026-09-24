@@ -1,7 +1,5 @@
 /**
- * Hono/API HTTP client for the FastAPI AI forecasting service.
- * Contracts: docs/14-api-ai-contracts.md, docs/07-ai-service-specification.md.
- * Timeouts: docs/14 + docs/15 (AI_REQUEST_TIMEOUT_MS ≈ 30s for forecast).
+ * HTTP client for the chat-only Python assistant service.
  */
 
 import { AppError, ErrorCodes } from '../../lib/errors'
@@ -13,19 +11,13 @@ import type {
   AiHealthResponse,
   AssistantChatRequest,
   AssistantChatResponse,
-  ForecastRequest,
-  ForecastResponse,
-  ModelMetricsResponse,
-  ModelsListResponse,
-  TrainRequest,
-  TrainResponse,
+  PublicChatRequest,
+  PublicChatResponse,
 } from './types'
 
 export type AiClientOptions = {
   baseUrl?: string
-  /** Forecast / models / default request timeout (docs/14: ~30s). */
   requestTimeoutMs?: number
-  trainTimeoutMs?: number
   healthTimeoutMs?: number
   fetch?: AiFetch
 }
@@ -120,7 +112,6 @@ function mapHttpStatusToAppError(
 export class AiServiceClient {
   readonly baseUrl: string
   readonly requestTimeoutMs: number
-  readonly trainTimeoutMs: number
   readonly healthTimeoutMs: number
   private readonly fetchImpl: AiFetch
 
@@ -131,8 +122,6 @@ export class AiServiceClient {
     )
     this.requestTimeoutMs =
       options.requestTimeoutMs ?? env.AI_REQUEST_TIMEOUT_MS ?? 30_000
-    this.trainTimeoutMs =
-      options.trainTimeoutMs ?? env.AI_TRAIN_TIMEOUT_MS ?? 120_000
     this.healthTimeoutMs =
       options.healthTimeoutMs ?? env.AI_HEALTH_TIMEOUT_MS ?? 5_000
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis)
@@ -197,51 +186,6 @@ export class AiServiceClient {
     }
   }
 
-  async forecast(request: ForecastRequest): Promise<ForecastResponse> {
-    return this.requestJson<ForecastResponse>({
-      method: 'POST',
-      path: '/forecast',
-      body: request,
-      timeoutMs: this.requestTimeoutMs,
-      operation: 'forecast',
-    })
-  }
-
-  async train(request: TrainRequest): Promise<TrainResponse> {
-    return this.requestJson<TrainResponse>({
-      method: 'POST',
-      path: '/train',
-      body: request,
-      timeoutMs: this.trainTimeoutMs,
-      operation: 'train',
-    })
-  }
-
-  async listModels(): Promise<ModelsListResponse> {
-    return this.requestJson<ModelsListResponse>({
-      method: 'GET',
-      path: '/models',
-      timeoutMs: this.requestTimeoutMs,
-      operation: 'listModels',
-    })
-  }
-
-  async getModelMetrics(modelId: string): Promise<ModelMetricsResponse> {
-    const id = modelId?.trim()
-    if (!id) {
-      throw AppError.badRequest('model_id is required', [
-        { path: 'model_id', message: 'model_id is required', code: 'REQUIRED' },
-      ])
-    }
-
-    return this.requestJson<ModelMetricsResponse>({
-      method: 'GET',
-      path: `/models/${encodeURIComponent(id)}/metrics`,
-      timeoutMs: this.requestTimeoutMs,
-      operation: 'getModelMetrics',
-    })
-  }
-
   async chat(request: AssistantChatRequest): Promise<AssistantChatResponse> {
     return this.requestJson<AssistantChatResponse>({
       method: 'POST',
@@ -250,6 +194,42 @@ export class AiServiceClient {
       timeoutMs: this.requestTimeoutMs,
       operation: 'chat',
     })
+  }
+
+  async publicChat(request: PublicChatRequest): Promise<PublicChatResponse> {
+    try {
+      const payload = await this.requestJson<PublicChatResponse>({
+        method: 'POST',
+        path: '/public-chat',
+        body: request,
+        timeoutMs: this.requestTimeoutMs,
+        operation: 'public chat',
+      })
+      const answer = typeof payload?.answer === 'string' ? payload.answer.trim() : ''
+      if (!answer) {
+        throw AppError.publicChatUnavailable(
+          'The donation assistant returned an empty answer.',
+        )
+      }
+      return { answer }
+    } catch (error) {
+      if (AppError.isAppError(error) && error.code === ErrorCodes.PUBLIC_CHAT_UNAVAILABLE) {
+        throw error
+      }
+      const reason = AppError.isAppError(error)
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : 'Public chat failed'
+      logWarn('Public chat unavailable', {
+        reason,
+        baseUrl: this.baseUrl,
+      })
+      throw AppError.publicChatUnavailable(
+        'The donation assistant is temporarily unavailable. Please try again shortly.',
+        error,
+      )
+    }
   }
 
   private async requestJson<T>(init: JsonRequestInit): Promise<T> {
@@ -384,18 +364,17 @@ export class AiServiceClient {
 /** Factory using parsed AppEnv (docs/15). */
 export function createAiClient(
   env: AppEnv = getEnv(),
-  options: Omit<AiClientOptions, 'baseUrl' | 'requestTimeoutMs' | 'trainTimeoutMs' | 'healthTimeoutMs'> &
+  options: Omit<AiClientOptions, 'baseUrl' | 'requestTimeoutMs' | 'healthTimeoutMs'> &
     Partial<
       Pick<
         AiClientOptions,
-        'baseUrl' | 'requestTimeoutMs' | 'trainTimeoutMs' | 'healthTimeoutMs'
+        'baseUrl' | 'requestTimeoutMs' | 'healthTimeoutMs'
       >
     > = {},
 ): AiServiceClient {
   return new AiServiceClient({
     baseUrl: options.baseUrl ?? env.AI_SERVICE_URL,
     requestTimeoutMs: options.requestTimeoutMs ?? env.AI_REQUEST_TIMEOUT_MS,
-    trainTimeoutMs: options.trainTimeoutMs ?? env.AI_TRAIN_TIMEOUT_MS,
     healthTimeoutMs: options.healthTimeoutMs ?? env.AI_HEALTH_TIMEOUT_MS,
     fetch: options.fetch,
   })

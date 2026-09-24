@@ -36,6 +36,8 @@ describe('toPublicNotification privacy fields', () => {
       message: 'Please donate',
       status: 'SENT',
       providerMessageId: 'mock-1',
+      deduplicationKey: null,
+      deliveryError: null,
       sentAt: new Date('2026-01-01T00:00:00.000Z'),
       createdBy: 2,
       createdAt: new Date('2026-01-01T00:00:00.000Z'),

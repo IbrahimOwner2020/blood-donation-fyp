@@ -10,7 +10,7 @@ export type PlaceholderViewState = "ready" | "loading" | "empty" | "error";
 type PlaceholderPageProps = {
   title: string;
   description?: string;
-  /** Default ready shows empty stub until API wiring */
+  /** Default ready shows empty stub until server wiring */
   state?: PlaceholderViewState;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -23,8 +23,8 @@ export function PlaceholderPage({
   description,
   state = "ready",
   emptyTitle = "No records yet",
-  emptyDescription = "This screen is a presentation stub. Values will come from the API.",
-  errorMessage = "Unable to load this view. The API remains the source of truth.",
+  emptyDescription = "This screen is a presentation stub. Values will come from the server.",
+  errorMessage = "Unable to load this view. The server remains the source of truth.",
   actions,
 }: PlaceholderPageProps) {
   return (

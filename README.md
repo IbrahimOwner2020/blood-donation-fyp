@@ -1,4 +1,4 @@
-# NBTS Blood AI
+# Blood Donation Management System
 
 AI-Enhanced Blood Supply Prediction and Donor Notification System for Tanzania, using NBTS as the case study.
 

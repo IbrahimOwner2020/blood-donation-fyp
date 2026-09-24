@@ -39,7 +39,7 @@ import {
 } from "~/lib/notifications";
 
 export const meta: MetaFunction = () => [
-  { title: "Notifications · NBTS Blood AI" },
+  { title: "Notifications · Blood Donation Management System" },
 ];
 
 type NotificationFilters = {
@@ -116,7 +116,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include notifications:read. The API remains the access authority.",
+        "Your session does not include notifications:read. The server remains the access authority.",
       filters,
     };
   }
@@ -194,7 +194,7 @@ export default function NotificationsIndexPage() {
       <div>
         <PageHeader
           title="Notifications"
-          description="Preview and send history. Providers and matching logic stay on the API."
+          description="Preview and send history. Providers and matching logic stay on the server."
         />
         <ForbiddenState
           title="Notifications access restricted"
@@ -202,7 +202,7 @@ export default function NotificationsIndexPage() {
             loaderData.message ||
             "You do not have permission to view notifications (notifications:read)."
           }
-          detail="UI gate only — the API enforces authorization."
+          detail="UI gate only — the server enforces authorization."
         />
       </div>
     );
@@ -245,7 +245,7 @@ export default function NotificationsIndexPage() {
     <div>
       <PageHeader
         title="Notifications"
-        description="Send history from the API. Nothing is sent from this list — compose requires preview and an explicit confirm."
+        description="Send history from the server. Nothing is sent from this list — compose requires preview and an explicit confirm."
         actions={
           <ProtectedUi
             session={session}
@@ -342,7 +342,7 @@ export default function NotificationsIndexPage() {
           title="No notifications loaded"
           description={
             unavailableMessage ||
-            "Channel, recipient, status, and timestamps will appear when the API returns history."
+            "Channel, recipient, status, and timestamps will appear when the server returns history."
           }
           action={
             canSend ? (
@@ -365,7 +365,7 @@ export default function NotificationsIndexPage() {
                   <th className="px-3 py-2 font-medium">Channel</th>
                   <th className="px-3 py-2 font-medium">Recipient</th>
                   <th className="px-3 py-2 font-medium">Donor</th>
-                  <th className="px-3 py-2 font-medium">Alert</th>
+                  <th className="px-3 py-2 font-medium">Historical reference</th>
                   <th className="px-3 py-2 font-medium">Status</th>
                   <th className="px-3 py-2 font-medium">Created</th>
                   <th className="px-3 py-2 font-medium">Sent</th>
@@ -390,16 +390,7 @@ export default function NotificationsIndexPage() {
                       </Link>
                     </td>
                     <td className="px-3 py-2">
-                      {row.alertId ? (
-                        <Link
-                          to={`/alerts/${row.alertId}`}
-                          className="font-medium text-nbts-teal underline-offset-2 hover:underline"
-                        >
-                          #{row.alertId}
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
+                      {row.alertId ? `#${row.alertId}` : "—"}
                     </td>
                     <td className="px-3 py-2 text-nbts-ink">
                       {formatNotificationStatus(row.status)}

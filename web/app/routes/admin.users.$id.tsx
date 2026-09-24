@@ -41,7 +41,7 @@ import {
 } from "~/lib/auth";
 
 export const meta: MetaFunction = () => [
-  { title: "User · NBTS Blood AI" },
+  { title: "User · Blood Donation Management System" },
 ];
 
 type UserDetailLoaderData =
@@ -462,7 +462,7 @@ export default function AdminUserDetailPage() {
             </select>
             <span className="text-xs text-nbts-muted">
               {loaderData.isFacilityScoped
-                ? "Your facility is applied by the API."
+                ? "Your facility is applied by the server."
                 : "Required when assigning Hospital Staff or Facility Manager."}
             </span>
           </label>
@@ -488,7 +488,7 @@ export default function AdminUserDetailPage() {
                 Role assignment
               </h2>
               <p className="text-xs text-nbts-muted">
-                Replaces all roles for this user. The API limits facility
+                Replaces all roles for this user. The server limits facility
                 managers to facility-safe roles.
               </p>
               {roles.length === 0 ? (
@@ -540,7 +540,7 @@ export default function AdminUserDetailPage() {
               </p>
               <p className="mt-3 text-xs text-nbts-muted">
                 Role editing requires role assignment permission. Assignment UI
-                is hidden; API still enforces access.
+                is hidden; server still enforces access.
               </p>
             </div>
           )}

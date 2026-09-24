@@ -323,13 +323,15 @@ def _heuristic_tool_response(
     if any(word in message for word in ["open", "show", "go to", "navigate"]):
         targets = {
             "dashboard": "/dashboard",
-            "alert": "/alerts",
+            "facility": "/admin/facilities",
+            "facilities": "/admin/facilities",
+            "alert": "/inventory",
             "donor": "/donors",
             "donation": "/donations",
             "inventory": "/inventory",
             "request": "/blood-requests",
-            "forecast": "/predictions",
-            "prediction": "/predictions",
+            "forecast": "/reports",
+            "prediction": "/reports",
             "notification": "/notifications",
             "report": "/reports",
         }
@@ -437,11 +439,13 @@ def run_chat(
         return heuristic or clarification_response()
 
     try:
+        history = [
+            ChatMessage(role=item.get("role", "user"), content=item.get("content", "")[:2000])
+            for item in request.history[-10:]
+            if item.get("role") in {"user", "assistant"} and item.get("content")
+        ]
         first = llm.complete(
-            [
-                ChatMessage(role="system", content=_system_prompt(request, tools)),
-                ChatMessage(role="user", content=request.message),
-            ]
+            [ChatMessage(role="system", content=_system_prompt(request, tools)), *history, ChatMessage(role="user", content=request.message)]
         )
         parsed = _parse_json_object(first.content)
     except AiServiceError:

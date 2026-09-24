@@ -9,7 +9,7 @@ import { hashPassword } from '../../modules/auth/password'
 import type { Db } from '../client'
 import { roles, userRoles, users } from '../schema'
 
-const ADMIN_ROLE_NAME = 'System Administrator'
+const ADMIN_ROLE_NAME = 'Administrator'
 
 export interface SeedAdminUserInput {
   name: string
@@ -34,7 +34,7 @@ export function readAdminUserSeed(): SeedAdminUserInput {
   const email = readEnv('ADMIN_EMAIL') ?? readEnv('DEMO_ADMIN_EMAIL')
   const password = readEnv('ADMIN_PASSWORD') ?? readEnv('DEMO_ADMIN_PASSWORD')
   const name =
-    readEnv('ADMIN_NAME') ?? readEnv('DEMO_ADMIN_NAME') ?? 'System Administrator'
+    readEnv('ADMIN_NAME') ?? readEnv('DEMO_ADMIN_NAME') ?? 'Administrator'
 
   if (!email) {
     throw new Error('ADMIN_EMAIL is required to seed the admin user')

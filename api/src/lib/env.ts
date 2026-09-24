@@ -40,7 +40,15 @@ const envSchema = z.object({
     SMTP_HOST: z.string().min(1).default('localhost'),
     SMTP_PORT: z.coerce.number().int().positive().default(1025),
     SMTP_FROM: z.string().min(1).default('no-reply@nbts.local'),
-    SMS_PROVIDER: z.string().min(1).default('mock'),
+    SMTP_USER: z.string().optional().default(''),
+    SMTP_PASS: z.string().optional().default(''),
+    SMTP_SECURE: booleanFromString.default(false),
+    SMS_PROVIDER: z.enum(['mock', 'nextsms']).default('mock'),
+    NEXTSMS_BASE_URL: z.string().url().default('https://messaging-service.co.tz/api/sms/v1/text/single'),
+    NEXTSMS_API_KEY: z.string().optional().default(''),
+    NEXTSMS_API_SECRET: z.string().optional().default(''),
+    NEXTSMS_SENDER_ID: z.string().optional().default(''),
+    ELIGIBILITY_REMINDER_SECRET: z.string().optional().default(''),
     COOKIE_SECURE: booleanFromString.default(false),
     SESSION_COOKIE_SAME_SITE: z
         .enum(['Strict', 'Lax', 'None', 'strict', 'lax', 'none'])

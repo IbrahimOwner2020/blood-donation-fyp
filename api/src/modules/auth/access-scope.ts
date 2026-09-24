@@ -3,13 +3,12 @@ import type { AuthUser } from '../../lib/types'
 
 export const HOSPITAL_STAFF_ROLE = 'Hospital Staff'
 export const REGISTERED_DONOR_ROLE = 'Registered Donor'
-export const FACILITY_MANAGER_ROLE = 'Facility Manager'
+export const FACILITY_MANAGER_ROLE = 'Hospital Staff'
 
 export const FACILITY_ASSIGNABLE_ROLE_DENYLIST = new Set([
-  'System Administrator',
-  'Facility Manager',
-  'NBTS Blood Bank Officer',
-  'Authorized Manager',
+  'Administrator',
+  'Blood Bank Staff',
+  'Registered Donor',
 ])
 
 export const FACILITY_ASSIGNABLE_PERMISSION_CODES = [
@@ -52,7 +51,7 @@ export function isFacilityManager(
 
 export function isFacilityAssignableRoleName(roleName: string): boolean {
   const name = roleName.trim()
-  return Boolean(name) && !FACILITY_ASSIGNABLE_ROLE_DENYLIST.has(name)
+  return name === HOSPITAL_STAFF_ROLE || name === REGISTERED_DONOR_ROLE
 }
 
 export function requireHospitalFacilityId(

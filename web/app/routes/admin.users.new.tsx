@@ -33,7 +33,7 @@ import {
 } from "~/lib/auth";
 
 export const meta: MetaFunction = () => [
-  { title: "New user · NBTS Blood AI" },
+  { title: "New user · Blood Donation Management System" },
 ];
 
 type NewUserLoaderData =
@@ -352,7 +352,7 @@ export default function AdminUsersNewPage() {
           </select>
           <span className="text-xs text-nbts-muted">
             {data.isFacilityScoped
-              ? "Your facility is applied by the API."
+              ? "Your facility is applied by the server."
               : "Required when assigning Hospital Staff or Facility Manager."}
           </span>
         </label>
@@ -363,7 +363,7 @@ export default function AdminUsersNewPage() {
               Initial roles
             </legend>
             <p className="text-xs text-nbts-muted">
-              Optional. The API limits facility managers to facility-safe roles.
+              Optional. The server limits facility managers to facility-safe roles.
             </p>
             {roles.length === 0 ? (
               <p className="text-sm text-nbts-muted">No roles available.</p>
