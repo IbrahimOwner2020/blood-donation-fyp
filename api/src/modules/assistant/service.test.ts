@@ -2,11 +2,12 @@ import { describe, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 
 import { AssistantActionStore } from './action-store'
+import { AppError, ErrorCodes } from '../../lib/errors'
 import { errorHandler } from '../../middleware'
 import { assistantRoutes } from './routes'
 import { handleAssistantMessage, type AssistantActionProposal } from './service'
 import { assistantToolSessionStore, AssistantToolSessionStore } from './tool-session-store'
-import { callAssistantTool, listAssistantTools } from './tools'
+import { callAssistantTool, listAssistantTools, normalizeAssistantToolArgs } from './tools'
 
 const db = {} as never
 
@@ -96,7 +97,7 @@ describe('handleAssistantMessage', () => {
     }
   })
 
-  test('asks for detail without page capability fallback wording', async () => {
+  test('shows the explicit unavailable state without a fixed data fallback', async () => {
     const result = await handleAssistantMessage(db, {
       message: 'can you help me?',
       context: {
@@ -104,14 +105,12 @@ describe('handleAssistantMessage', () => {
       },
     }, allPermissions)
 
-    expect(result.type).toBe('answer')
-    if (result.type === 'answer') {
-      expect(result.message).toContain('more specific question')
-      expect(result.message).toContain('/donations')
-      expect(result.message).not.toContain("You're on")
-      expect(result.message).not.toContain('I can help across the NBTS app')
-      expect(result.message).not.toContain('I can help with')
-    }
+    expect(result).toMatchObject({
+      type: 'answer',
+      unavailableCode: 'AI_SERVICE_UNAVAILABLE',
+      unavailableStage: 'provider',
+      retryable: true,
+    })
   })
 
   test('delegates to AI-service chat when a tool session is available', async () => {
@@ -184,9 +183,70 @@ describe('handleAssistantMessage', () => {
 
     expect(result.type).toBe('answer')
     if (result.type === 'answer') {
-      expect(result.message).toContain('more specific question')
-      expect(result.message).not.toContain("You're on")
-      expect(result.message).not.toContain('I can help with')
+      expect(result.unavailableCode).toBe('AI_SERVICE_UNAVAILABLE')
+      expect(result.message).toContain('could not reach')
+    }
+  })
+
+  test('reports an AI timeout instead of an unreachable service', async () => {
+    const store = new AssistantToolSessionStore({ now: () => 10 })
+    const toolSession = store.create({ userId: 1, sessionId: 'session-a', permissions: ['reports:read'] })
+
+    const result = await handleAssistantMessage(db, { message: 'summarize stock' }, ['reports:read'], {
+      toolSession,
+      toolsUrl: 'http://api.test/api/v1/assistant/tools',
+      aiClient: {
+        chat: async () => {
+          throw new AppError('AI service chat timed out after 30000ms', {
+            code: ErrorCodes.INTERNAL_ERROR,
+            status: 504,
+            details: [{ code: 'AI_TIMEOUT', message: 'AI service chat timed out after 30000ms' }],
+          })
+        },
+      },
+    })
+
+    expect(result).toMatchObject({
+      type: 'answer',
+      unavailableCode: 'AI_TIMEOUT',
+      unavailableStage: 'provider',
+      retryable: true,
+    })
+  })
+
+  test('reports the first contract violation when the AI layout fails API validation', async () => {
+    const store = new AssistantToolSessionStore({ now: () => 10 })
+    const toolSession = store.create({ userId: 1, sessionId: 'session-a', permissions: ['reports:read'] })
+
+    const result = await handleAssistantMessage(db, { message: 'summarize stock' }, ['reports:read'], {
+      toolSession,
+      toolsUrl: 'http://api.test/api/v1/assistant/tools',
+      aiClient: {
+        chat: async () => ({
+          type: 'composed_answer',
+          message: 'Stock summary is ready.',
+          sources: [{ sourceId: 'source_summary', tool: 'dashboard.summary', arguments: {} }],
+          composition: {
+            title: 'Stock',
+            summary: 'Current stock.',
+            language: 'en',
+            sections: [{
+              id: 'Overview',
+              layout: 'grid',
+              blocks: [{ id: 'summary', type: 'narrative', width: 'full', content: 'Stock is available.', sourceIds: ['source_summary'] }],
+            }],
+          },
+        }),
+      },
+    })
+
+    expect(result).toMatchObject({
+      type: 'answer',
+      unavailableCode: 'ASSISTANT_RESPONSE_INVALID',
+      unavailableStage: 'composition',
+    })
+    if (result.type === 'answer') {
+      expect(result.message).toContain('composition.sections.0.id')
     }
   })
 })
@@ -223,6 +283,50 @@ describe('AssistantActionStore', () => {
 })
 
 describe('assistant tool sessions and tools', () => {
+  test('normalizes aggregate and lowercase blood-group filters from the model', () => {
+    expect(normalizeAssistantToolArgs({ bloodGroup: 'all', limit: 10 })).toEqual({ limit: 10 })
+    expect(normalizeAssistantToolArgs({ bloodGroup: 'o+' })).toEqual({ bloodGroup: 'O+' })
+    expect(normalizeAssistantToolArgs({ bloodGroup: null })).toEqual({})
+  })
+
+  test('normalizes model boolean flags and enum casing to query-string values', () => {
+    expect(normalizeAssistantToolArgs({ activeOnly: true, severity: 'high', status: ' open ' })).toEqual({
+      activeOnly: 'true',
+      severity: 'HIGH',
+      status: 'OPEN',
+    })
+    expect(normalizeAssistantToolArgs({ availableOnly: false, priority: 'urgent' })).toEqual({
+      availableOnly: 'false',
+      priority: 'URGENT',
+    })
+    expect(normalizeAssistantToolArgs({ limit: 1000 })).toEqual({ limit: 100 })
+    expect(normalizeAssistantToolArgs({ limit: 0 })).toEqual({ limit: 1 })
+  })
+
+  test('drops blank and null optional arguments the model fills in', () => {
+    expect(normalizeAssistantToolArgs({ q: '', status: null, facilityId: '  ', limit: 20 })).toEqual({ limit: 20 })
+  })
+
+  test('navigation tool resolves a label when the model omits the path', async () => {
+    const session = {
+      token: 'ast_test',
+      userId: 1,
+      sessionId: 'session-a',
+      permissions: ['reports:read'],
+      requestId: null,
+      facilityId: null,
+      expiresAt: 100,
+    }
+
+    await expect(callAssistantTool(db, session, 'navigation.propose', { label: 'Reports page' })).resolves.toEqual({
+      type: 'navigation',
+      path: '/reports',
+      message: 'Opening Reports page.',
+      requiredPermission: 'reports:read',
+    })
+    await expect(callAssistantTool(db, session, 'navigation.propose', {})).rejects.toThrow('Invalid assistant tool navigation.propose')
+  })
+
   test('registers every expected MCP-like assistant tool descriptor', () => {
     const tools = listAssistantTools({
       token: 'ast_test',
@@ -230,13 +334,20 @@ describe('assistant tool sessions and tools', () => {
       sessionId: 'session-a',
       permissions: allPermissions,
       requestId: null,
+      facilityId: null,
       expiresAt: 100,
     })
     const names = tools.map((tool) => tool.name).sort()
 
     expect(names).toEqual([
+      'ai_analysis.get',
+      'ai_analysis.propose_run',
+      'ai_analysis.search',
       'blood_requests.get',
       'blood_requests.search',
+      'dashboard.alerts',
+      'dashboard.summary',
+      'dashboard.trends',
       'donations.get',
       'donations.search',
       'donors.get',
@@ -247,6 +358,12 @@ describe('assistant tool sessions and tools', () => {
       'navigation.propose',
       'notifications.propose_preview',
       'notifications.propose_send',
+      'predictions.history',
+      'reports.blood_requests',
+      'reports.donations',
+      'reports.donor_eligibility',
+      'reports.inventory',
+      'reports.notifications',
     ])
   })
 
@@ -271,6 +388,7 @@ describe('assistant tool sessions and tools', () => {
       sessionId: 'session-a',
       permissions: [],
       requestId: null,
+      facilityId: null,
       expiresAt: 100,
     }, 'inventory.propose_update', {
       inventoryId: 1,
@@ -285,6 +403,7 @@ describe('assistant tool sessions and tools', () => {
       sessionId: 'session-a',
       permissions: ['facilities:read'],
       requestId: null,
+      facilityId: null,
       expiresAt: 100,
     }
 

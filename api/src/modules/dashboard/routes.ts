@@ -18,13 +18,11 @@ import { requireAuth } from '../../middleware/require-auth'
 import { requirePermission } from '../../middleware/require-permission'
 import {
   dashboardAlertsQuerySchema,
-  dashboardPredictionsQuerySchema,
   dashboardSummaryQuerySchema,
   dashboardTrendQuerySchema,
 } from './schemas'
 import {
   getDashboardAlerts,
-  getDashboardPredictions,
   getDashboardSummary,
   getDemandTrend,
   getDonationTrend,
@@ -89,23 +87,6 @@ dashboardRoutes.get(
     const query = parseQuery(c, dashboardTrendQuerySchema)
     const trend = await getDemandTrend(getDb(), query)
     return jsonOk(c, { trend })
-  },
-)
-
-/**
- * GET /dashboard/predictions
- * Latest prediction snapshot per blood group (includes daily series).
- */
-dashboardRoutes.get(
-  '/predictions',
-  requirePermission('reports:read'),
-  async (c) => {
-    const query = parseQuery(c, dashboardPredictionsQuerySchema)
-    const result = await getDashboardPredictions(getDb(), query)
-    return jsonOk(c, {
-      facilityId: result.facilityId,
-      predictions: result.predictions,
-    })
   },
 )
 

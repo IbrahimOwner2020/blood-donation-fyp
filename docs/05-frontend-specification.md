@@ -132,3 +132,23 @@ Must clearly distinguish:
 - Use server values for authoritative decisions.
 - Use optimistic updates only for safe, reversible interactions.
 - Always provide loading and empty states.
+
+## AI Operations Assistant
+
+`/assistant` is a protected staff workspace. Desktop uses conversation history,
+conversation content, and an artifact panel. Smaller screens keep the
+conversation full-screen and open artifacts in an accessible overlay. The
+sidebar exposes the route only to staff with a supported permission; the global
+floating assistant button is a shortcut to the full page rather than a second
+chat implementation.
+
+The page renders only API-validated blocks. LLM-composed answers use reusable
+stack/grid/column sections containing narrative, KPI, comparison, table, chart,
+ranking, status, timeline, notice, and recommendation blocks. Every displayed
+data value has already been resolved by the API; the browser never interprets
+model HTML or calculation expressions. Reports expose a composition-matching
+PDF and a CSV action for each table. Conversational forms require an editable
+review followed by a separate explicit confirmation.
+English and Kiswahili are selectable per conversation. Expired, forbidden,
+partial, empty, loading, cancellation, and failed-action states remain visible
+and must not be represented as successful output.

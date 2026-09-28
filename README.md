@@ -6,7 +6,7 @@ This repository is a monorepo with three application services:
 
 - `web/`: React Router frontend.
 - `api/`: Hono API running on Bun.
-- `ai-service/`: Python FastAPI forecasting service.
+- `ai-service/`: Python FastAPI service for the staff assistant and public chat.
 - `docs/`: project documentation copied from the provided documentation pack.
 - `legacy-php-prototype/`: archived copy of the previous PHP prototype.
 
@@ -38,11 +38,10 @@ docker compose up --build
 # or: make up
 ```
 
-The local env template uses Ollama Cloud for testable forecasts:
-`LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL=https://ollama.com`, and
-`LLM_FORECAST_DEFAULT=true`. Paste your key into `OLLAMA_API_KEY` in `.env`
-before booting the stack. To use a local Ollama container instead, set
-`OLLAMA_BASE_URL=http://ollama:11434` and run `make up-llm`.
+The local env template uses Ollama Cloud for the assistant and public chat:
+`LLM_PROVIDER=ollama` and `OLLAMA_BASE_URL=https://ollama.com`. Paste your key
+into `OLLAMA_API_KEY` in `.env` before booting the stack. To use a local Ollama
+container instead, set `OLLAMA_BASE_URL=http://ollama:11434` and run `make up-llm`.
 
 This starts web, api, ai-service, MariaDB, and Mailpit. The API container migrates and seeds on start (`RUN_MIGRATIONS` / `RUN_SEED`). Details: [`docs/11-docker-and-local-deployment.md`](./docs/11-docker-and-local-deployment.md). Railway: [`docs/17-railway-deployment.md`](./docs/17-railway-deployment.md).
 
@@ -54,7 +53,7 @@ bun run db:migrate
 bun run db:seed
 ```
 
-Seed is idempotent: blood groups, the full roles/permissions catalogue, donation centres, **demo users** (Argon2id), healthcare facilities, and (when allowed) **demo operations** (donors, donations/inventory, blood requests, O+ demand history).
+Seed is idempotent for a fixed anchor: blood groups, the full roles/permissions catalogue, donation centres, **demo users** (Argon2id), healthcare facilities, and (when allowed) a **60-day demo operations dataset**.
 
 The seeded RBAC catalogue includes System Administrator, Facility Manager, Donor Manager, Blood Collector, Blood Bank Manager, Doctor, Registered Donor, and compatibility roles. Re-run `bun run db:seed` after deploys so existing databases receive missing permissions such as `facilities:*`, `users:manage:facility`, and `roles:assign:facility`.
 
@@ -64,7 +63,8 @@ Gating (same pattern as demo users — default on in non-production, off in prod
 | --- | --- |
 | `SEED_ADMIN_USER=true` | One System Administrator from `ADMIN_*` |
 | `SEED_DEMO_USERS=true` | Demo admin/officer accounts |
-| `SEED_DEMO_OPERATIONS=true` | Demo donors / donations / inventory / requests / 35-day O+ demand |
+| `SEED_DEMO_OPERATIONS=true` | 60-day donors, donations, inventory, requests, demand, predictions, alerts, notifications, and AI-report history |
+| `DEMO_DATA_AS_OF=YYYY-MM-DD` | Optional stable end date for repeatable demo datasets; defaults to today in UTC |
 
 For Railway / production-like deploys keep both `false`. Demo operations need an ACTIVE user (`createdBy`); enable demo users locally first.
 
@@ -77,10 +77,11 @@ For Railway / production-like deploys keep both `false`. Demo operations need an
 
 | Role | Email | Password (placeholder) |
 | --- | --- | --- |
-| System Administrator | `admin@nbts.local` | `ChangeMe-Admin-Local-Only!` |
-| NBTS Blood Bank Officer | `officer@nbts.local` | `ChangeMe-Officer-Local-Only!` |
+| Administrator | `admin@nbts.local` | `ChangeMe-Admin-Local-Only!` |
+| Manager | `manager@nbts.local` | `ChangeMe-Manager-Local-Only!` |
+| Blood Bank Staff | `officer@nbts.local` | `ChangeMe-Officer-Local-Only!` |
 
-Override via `DEMO_ADMIN_*` / `DEMO_OFFICER_*` in `.env` before seeding. **Do not use these outside local/dev.**
+Override via `DEMO_ADMIN_*` / `DEMO_MANAGER_*` / `DEMO_OFFICER_*` in `.env` before seeding. **Do not use these outside local/dev.**
 
 For production/demo bootstrap without the officer or demo operations, seed only
 the admin:
@@ -99,14 +100,22 @@ ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD='replace-me' SKIP_ADMIN_MIGRATION=t
 
 ### Demo operational data (local/QA)
 
-With `SEED_DEMO_OPERATIONS=true` (default in development), `bun run db:seed` also creates:
+With `SEED_DEMO_OPERATIONS=true` (default in development), `bun run db:seed` preserves the small original examples and adds a deterministic dataset ending on `DEMO_DATA_AS_OF` or the current UTC date:
 
-- **6 donors** (`NBTS-DEMO-D001`…`D006`) across O+/A+/B-/O-/AB+/B+, active, `POTENTIALLY_ELIGIBLE`, with phone + email
-- **4 donations** → AVAILABLE inventory units (35-day shelf life), mostly assigned to seeded facilities
-- **2 blood requests**: `DEMO-REQ-PENDING-O+` (PENDING) and `DEMO-REQ-APPROVED-A+` (APPROVED)
-- **35 days** of SYSTEM `demand_records` for O+ at Muhimbili (enough for forecast / `MIN_TRAINING_ROWS`)
+- **96 synthetic donors** covering all eight blood groups and seeded regions
+- **72 donations and inventory units** across the last 60 days with coherent available, reserved, issued, expired, and discarded states
+- **240 blood requests** spanning facilities, priorities, and request lifecycle statuses
+- **480 imported demand points**: one daily point for every blood group over 60 complete days
+- **72 weekly demo prediction snapshots**, **24 linked shortage alerts**, and **96 notification-history rows**
+- **9 weekly `REPORT_ONLY` AI-analysis snapshots** for assistant and reporting demonstrations
 
-Predictions and shortage alerts are **not** seeded — run forecast from the UI after seed. Re-runs are idempotent (donor numbers, donation note markers, request soft-keys, demand date keys).
+No LLM, SMS gateway, or email provider is called. Predictions and AI-analysis rows are labelled synthetic demo history. Re-running with the same anchor inserts no duplicates.
+
+### AI Operations Assistant
+
+The protected `/assistant` workspace uses the configured LLM to choose up to six authorized read tools and compose a validated responsive layout from a safe component palette. The model selects the useful metrics, comparisons, tables, charts, rankings, timelines, notices, and recommendations; Hono re-runs the selected tools and resolves every displayed value from authoritative API results. Arbitrary HTML and model-supplied operational figures are rejected.
+
+Prompts that explicitly request a report or export create an immutable version-2 snapshot. PDF follows the generated composition, while each table exposes its own formula-safe UTF-8 CSV export. Existing version-1 snapshots remain readable. If the LLM is unavailable or its layout cannot be validated, the assistant displays an unavailable state instead of substituting a fixed report.
 
 ## Local Development
 

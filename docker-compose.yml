@@ -109,11 +109,9 @@ services:
       context: ./ai-service
     environment:
       MODEL_DIR: /app/models
-      DEFAULT_FORECAST_HORIZON: ${DEFAULT_FORECAST_HORIZON:-7}
       MIN_TRAINING_ROWS: ${MIN_TRAINING_ROWS:-30}
       # Local Docker test path defaults to Ollama + phi4. Override to openai in prod.
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
-      LLM_FORECAST_DEFAULT: ${LLM_FORECAST_DEFAULT:-true}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-phi4}

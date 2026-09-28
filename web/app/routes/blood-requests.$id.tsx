@@ -11,7 +11,6 @@ import {
   type MetaFunction,
 } from "react-router";
 
-import { ProtectedUi } from "~/components/auth/ProtectedUi";
 import { Button } from "~/components/ui/Button";
 import { ConfirmDialog } from "~/components/ui/ConfirmDialog";
 import { EmptyState } from "~/components/ui/EmptyState";
@@ -25,11 +24,13 @@ import { ApiRequestError } from "~/lib/api";
 import {
   UI_PERMISSIONS,
   fetchAuthSession,
+  hasAnyUiPermission,
   hasUiPermission,
   type AuthSession,
 } from "~/lib/auth";
 import {
-  allowedNextStatuses,
+  allowedNextStatusesForPermissions,
+  canApplyRequestStatus,
   formatApiErrorMessage,
   formatBloodGroupCode,
   formatDateTime,
@@ -43,7 +44,6 @@ import {
   parsePositiveInt,
   patchBloodRequest,
   statusNeedsFulfilledUnits,
-  transitionMachineSummary,
   type BloodRequestStatus,
   type PublicBloodRequest,
 } from "~/lib/blood-requests";
@@ -58,6 +58,8 @@ type DetailLoaderData =
       session: AuthSession;
       bloodRequest: PublicBloodRequest;
       canUpdate: boolean;
+      canApprove: boolean;
+      canIssue: boolean;
       nextStatuses: BloodRequestStatus[];
     }
   | { status: "forbidden" }
@@ -100,9 +102,25 @@ export async function clientLoader({
 
   try {
     const bloodRequest = await getBloodRequest(requestId);
-    const canUpdate = hasUiPermission(session, UI_PERMISSIONS.requestsUpdate);
-    const nextStatuses = [...allowedNextStatuses(bloodRequest.status)];
-    return { status: "ok", session, bloodRequest, canUpdate, nextStatuses };
+    const canApprove = hasUiPermission(
+      session,
+      UI_PERMISSIONS.requestsApprove,
+    );
+    const canIssue = hasUiPermission(session, UI_PERMISSIONS.requestsIssue);
+    const canUpdate = canApprove || canIssue;
+    const nextStatuses = allowedNextStatusesForPermissions(bloodRequest.status, {
+      canApprove,
+      canIssue,
+    });
+    return {
+      status: "ok",
+      session,
+      bloodRequest,
+      canUpdate,
+      canApprove,
+      canIssue,
+      nextStatuses,
+    };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 403) {
       return { status: "forbidden" };
@@ -141,7 +159,13 @@ export async function clientAction({
   }
 
   const session = await fetchAuthSession().catch(() => null);
-  if (!session || !hasUiPermission(session, UI_PERMISSIONS.requestsUpdate)) {
+  if (
+    !session ||
+    !hasAnyUiPermission(session, [
+      UI_PERMISSIONS.requestsApprove,
+      UI_PERMISSIONS.requestsIssue,
+    ])
+  ) {
     return data<DetailActionData>(
       { error: "You do not have permission to update blood requests." },
       { status: 403 },
@@ -156,6 +180,18 @@ export async function clientAction({
     return data<DetailActionData>(
       { error: "Select a valid next status." },
       { status: 400 },
+    );
+  }
+
+  const canApprove = hasUiPermission(session, UI_PERMISSIONS.requestsApprove);
+  const canIssue = hasUiPermission(session, UI_PERMISSIONS.requestsIssue);
+  if (!canApplyRequestStatus(nextStatus, { canApprove, canIssue })) {
+    return data<DetailActionData>(
+      {
+        error:
+          "Your role cannot apply this status. Managers approve or cancel; Blood Bank Staff issue approved requests.",
+      },
+      { status: 403 },
     );
   }
 
@@ -175,7 +211,7 @@ export async function clientAction({
     return data<DetailActionData>(
       {
         error:
-          "fulfilledUnits is required when moving to PARTIAL (1 … unitsRequested − 1).",
+          "Enter how many units have been fulfilled. Use at least 1 and fewer than the number requested.",
       },
       { status: 400 },
     );
@@ -289,17 +325,16 @@ function StatusChangeForm({
               Math.max(bloodRequest.fulfilledUnits || 1, 1),
               maxPartial,
             )}
-            hint={`PARTIAL requires 1…${maxPartial} (less than ${bloodRequest.unitsRequested} requested).`}
+            hint={`Enter 1 to ${maxPartial}. That must be less than the ${bloodRequest.unitsRequested} units requested.`}
           />
         ) : selected === "FULFILLED" ? (
           <p className="text-xs text-nbts-muted">
-            FULFILLED sets fulfilled units to {bloodRequest.unitsRequested}{" "}
-            (units requested) on the server.
+            This marks all {bloodRequest.unitsRequested} requested units as
+            fulfilled.
           </p>
         ) : (
           <p className="text-xs text-nbts-muted">
-            Fulfilled units stay at {bloodRequest.fulfilledUnits} for this
-            transition.
+            Fulfilled units stay at {bloodRequest.fulfilledUnits}.
           </p>
         )}
 
@@ -320,7 +355,7 @@ function StatusChangeForm({
       <ConfirmDialog
         open={confirmOpen}
         title={`Apply ${formatRequestStatus(selected)}?`}
-        description={`Request #${bloodRequest.id} will move to ${formatRequestStatus(selected)}. The server enforces the status machine and may reject illegal transitions.`}
+        description={`Request #${bloodRequest.id} will be marked ${formatRequestStatus(selected)}.`}
         confirmLabel="Apply status"
         tone={selected === "CANCELLED" ? "danger" : "primary"}
         busy={busy}
@@ -355,8 +390,7 @@ export default function BloodRequestDetailPage() {
         <PageHeader title="Blood request" />
         <ForbiddenState
           title="Missing permission"
-          message="requests:read is required to view this request. Status changes need requests:update."
-          detail="UI gate: requests:read"
+          message="You do not have permission to view this request. Contact an administrator if you need access."
           action={
             <Link
               to="/blood-requests"
@@ -415,7 +449,7 @@ export default function BloodRequestDetailPage() {
     <div>
       <PageHeader
         title={`Request #${bloodRequest.id}`}
-        description="Detail and status changes. Illegal transitions surface as server errors."
+        description="Blood request details."
         actions={
           <Link
             to="/blood-requests"
@@ -488,29 +522,22 @@ export default function BloodRequestDetailPage() {
         </dl>
       </div>
 
-      <section className="rounded-lg border border-nbts-border bg-nbts-panel p-5">
-        <h2 className="text-base font-semibold text-nbts-ink">Status change</h2>
-        <p className="mt-1 text-xs text-nbts-muted">
-          Machine (server authority): {transitionMachineSummary()}
-        </p>
+      {loaderData.canUpdate ? (
+        <section className="rounded-lg border border-nbts-border bg-nbts-panel p-5">
+          <h2 className="text-base font-semibold text-nbts-ink">Update status</h2>
+          <p className="mt-1 text-sm text-nbts-muted">
+            Choose what should happen next with this request.
+          </p>
 
-        <div className="mt-4">
-          <ProtectedUi
-            session={loaderData.session}
-            gate={UI_PERMISSIONS.requestsUpdate}
-            fallback={
-              <ForbiddenState
-                title="Cannot change status"
-                message="requests:update is required to change status or fulfilment. The server will reject unauthorized PATCH calls."
-                detail="UI gate: requests:update"
-              />
-            }
-          >
+          <div className="mt-4">
             {terminal ? (
               <p className="text-sm text-nbts-muted">
-                This request is terminal (
-                {formatRequestStatus(bloodRequest.status)}). No further status
-                changes are allowed.
+                This request is {formatRequestStatus(bloodRequest.status)}. It
+                cannot be changed.
+              </p>
+            ) : nextStatuses.length === 0 ? (
+              <p className="text-sm text-nbts-muted">
+                No further updates are available for this request.
               </p>
             ) : (
               <StatusChangeForm
@@ -520,9 +547,9 @@ export default function BloodRequestDetailPage() {
                 busy={busy}
               />
             )}
-          </ProtectedUi>
-        </div>
-      </section>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

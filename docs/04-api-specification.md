@@ -199,3 +199,35 @@ GET /dashboard/alerts
 - Do not trust frontend donor-matching results.
 - Validate all input using Zod.
 - Use transactions where multiple database records must remain consistent.
+
+## AI Operations Assistant
+
+The staff assistant is mounted at `/api/v1/assistant`. All routes require an
+authenticated user with at least one supported operational permission.
+
+```text
+GET/POST    /assistant/conversations
+GET/PATCH/DELETE /assistant/conversations/:id
+POST        /assistant/conversations/:id/messages
+PATCH       /assistant/drafts/:id
+POST        /assistant/drafts/:id/prepare
+POST        /assistant/actions/:id/confirm
+POST        /assistant/actions/:id/cancel
+GET         /assistant/reports/:id
+POST        /assistant/reports/:id/refresh
+GET         /assistant/reports/:id/export?format=pdf|csv&section=<table-block-id>
+```
+
+`POST /assistant/message` remains a temporary compatibility endpoint. New
+clients use conversations and receive validated `blocks[]`: `text`, `metrics`,
+`table`, `chart`, `composition`, `report`, `form`, `action_proposal`, and
+`notice`. A composition contains ordered stack/grid/column sections assembled
+from the safe block palette; it never contains HTML, CSS, scripts, or raw model
+values. CSV exports identify one table section because a composed report may
+contain several independent datasets.
+
+Conversations and report snapshots are owner-only and retained for 90 days.
+Drafts expire after 24 hours and proposals after 15 minutes. Each report read,
+refresh, export, and action confirmation rechecks current permissions and
+facility scope. Domain writes run through existing services and schemas, never
+direct assistant table writes.

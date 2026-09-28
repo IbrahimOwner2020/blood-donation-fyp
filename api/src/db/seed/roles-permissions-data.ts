@@ -23,19 +23,19 @@ export const ROLE_SEEDS: readonly RoleSeed[] = [
       'Manages users, fixed role assignment, facilities, operational records, reports, notifications, audit logs, and configuration.',
   },
   {
-    name: 'Blood Bank Staff',
+    name: 'Manager',
     description:
-      'Manages donors, donations, inventory, blood requests, stock alerts, notifications, and operational reports.',
+      'Approves or cancels blood requests nationally, and monitors donors, donations, inventory, alerts, notifications, and reports (read-only).',
   },
   {
-    name: 'Registered Donor',
+    name: 'Blood Bank Staff',
     description:
-      'Self-service donor account for viewing and updating only the linked donor profile.',
+      'Manages donors, donations, and inventory, and issues units against manager-approved blood requests.',
   },
   {
     name: 'Hospital Staff',
     description:
-      'Uses own-facility inventory and blood requests, issues units, and reads own-facility reports.',
+      'Creates blood requests for their assigned facility and reads own-facility inventory and reports.',
   },
 ] as const
 
@@ -59,9 +59,10 @@ const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   'inventory:update': 'Update inventory status and assignments.',
   'requests:read': 'View blood requests.',
   'requests:create': 'Create blood requests.',
-  'requests:update': 'Update blood request status and fulfilment.',
-  'predictions:read': 'View AI forecasts and prediction history.',
-  'predictions:run': 'Trigger forecast runs.',
+  'requests:approve':
+    'Approve pending blood requests or cancel open requests.',
+  'requests:issue':
+    'Issue units against approved blood requests (partial or full fulfilment).',
   'alerts:read': 'View shortage alerts.',
   'alerts:update': 'Acknowledge, resolve, or dismiss shortage alerts.',
   'notifications:read': 'View notification history and previews.',
@@ -78,15 +79,26 @@ export const PERMISSION_SEEDS: readonly PermissionSeed[] =
 
 /**
  * Role → permission mapping (docs/10 role capabilities).
- * System Administrator: every code in PERMISSION_CODES (super admin).
- * Facility Manager: own-facility user/role assignment plus facility operations.
- * Officer: operational CRUD for donors through notifications.
- * Manager: dashboards/forecasts/alerts/reports + read monitoring.
+ * Administrator: every code in PERMISSION_CODES.
+ * Manager: national approve/cancel + read monitoring (alerts).
+ * Blood Bank Staff: operational CRUD; issue approved requests only.
+ * Hospital Staff: create own-facility requests; read inventory/reports.
  */
 export const ROLE_PERMISSION_MAP: Readonly<
   Record<RoleName, readonly PermissionCode[]>
 > = {
   Administrator: PERMISSION_CODES,
+  Manager: [
+    'facilities:read',
+    'donors:read',
+    'donations:read',
+    'inventory:read',
+    'requests:read',
+    'requests:approve',
+    'alerts:read',
+    'notifications:read',
+    'reports:read',
+  ],
   'Blood Bank Staff': [
     'facilities:read',
     'donors:read',
@@ -97,22 +109,16 @@ export const ROLE_PERMISSION_MAP: Readonly<
     'inventory:read',
     'inventory:update',
     'requests:read',
-    'requests:create',
-    'requests:update',
-    'alerts:read',
-    'alerts:update',
+    'requests:issue',
     'notifications:read',
     'notifications:send',
     'reports:read',
   ],
-  'Registered Donor': [],
   'Hospital Staff': [
     'facilities:read',
     'inventory:read',
-    'inventory:update',
     'requests:read',
     'requests:create',
-    'requests:update',
     'reports:read',
   ],
 }

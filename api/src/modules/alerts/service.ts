@@ -8,7 +8,6 @@
 
 import {
   and,
-  asc,
   count,
   desc,
   eq,
@@ -30,16 +29,10 @@ import {
   DEFAULT_LOW_STOCK_THRESHOLD,
   getInventorySummary,
 } from '../inventory'
-import {
-  getLatestPrediction,
-  getPredictionById,
-} from '../predictions/service'
-import type { PublicPrediction } from '../predictions/serialize'
 import { computeShortageGap } from './gap'
 import type {
   ListAlertsQuery,
   PatchAlertStatusBody,
-  RecalculateAlertsBody,
 } from './schemas'
 import {
   toPublicAlert,
@@ -561,99 +554,4 @@ export async function upsertAlertFromShortage(
 
   const created = await getAlertById(db, insertId)
   return { alert: created, action: 'created', gap }
-}
-
-function predictionToUpsertInput(
-  prediction: PublicPrediction,
-): UpsertFromPredictionInput {
-  return {
-    predictionId: prediction.id,
-    bloodGroupId: prediction.bloodGroupId,
-    facilityId: prediction.facilityId ?? null,
-    predictedUnits: prediction.predictedUnits ?? 0,
-  }
-}
-
-export type RecalculateAlertsResult = {
-  results: UpsertAlertResult[]
-}
-
-/**
- * Recalculate alerts from a specific prediction, latest for one blood group,
- * or latest prediction per blood group (when no filters).
- */
-export async function recalculateAlerts(
-  db: Db,
-  body: RecalculateAlertsBody = {},
-  deps: AlertServiceDeps = {},
-): Promise<RecalculateAlertsResult> {
-  if (typeof body.facilityId === 'number') {
-    await assertFacilityExists(db, body.facilityId)
-  }
-
-  if (typeof body.predictionId === 'number') {
-    const prediction = await getPredictionById(db, body.predictionId)
-    const result = await upsertAlertFromShortage(
-      db,
-      predictionToUpsertInput(prediction),
-      deps,
-    )
-    return { results: [result] }
-  }
-
-  if (
-    body.bloodGroupId !== undefined ||
-    body.bloodGroup !== undefined
-  ) {
-    const bloodGroup = await resolveBloodGroup(
-      db,
-      body.bloodGroupId,
-      body.bloodGroup,
-    )
-    const prediction = await getLatestPrediction(db, {
-      bloodGroupId: bloodGroup.id,
-      facilityId:
-        typeof body.facilityId === 'number' ? body.facilityId : undefined,
-    })
-    const result = await upsertAlertFromShortage(
-      db,
-      predictionToUpsertInput(prediction),
-      deps,
-    )
-    return { results: [result] }
-  }
-
-  // All blood groups: use latest prediction per group (facility-scoped if set).
-  const groups = await db
-    .select({ id: bloodGroups.id })
-    .from(bloodGroups)
-    .orderBy(asc(bloodGroups.id))
-
-  const results: UpsertAlertResult[] = []
-  for (const group of groups ?? []) {
-    if (typeof group?.id !== 'number') {
-      continue
-    }
-    try {
-      const prediction = await getLatestPrediction(db, {
-        bloodGroupId: group.id,
-        facilityId:
-          typeof body.facilityId === 'number' ? body.facilityId : undefined,
-      })
-      const result = await upsertAlertFromShortage(
-        db,
-        predictionToUpsertInput(prediction),
-        deps,
-      )
-      results.push(result)
-    } catch (error) {
-      // Skip groups with no prediction (404) — other failures propagate.
-      if (error instanceof AppError && error.status === 404) {
-        continue
-      }
-      throw error
-    }
-  }
-
-  return { results }
 }

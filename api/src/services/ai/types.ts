@@ -58,10 +58,19 @@ export type AssistantActionProposalWire = {
   effect: string
 }
 
+export type AssistantDataSourceWire = {
+  sourceId: string
+  tool: string
+  arguments: Record<string, unknown>
+}
+
 export type AssistantChatResponse =
   | {
       type: 'answer'
       message: string
+      unavailableCode?: string
+      unavailableStage?: 'tools' | 'provider' | 'planning' | 'data' | 'composition'
+      retryable?: boolean
     }
   | {
       type: 'navigation'
@@ -78,6 +87,12 @@ export type AssistantChatResponse =
       type: 'action_proposal'
       message: string
       proposal: AssistantActionProposalWire
+    }
+  | {
+      type: 'composed_answer'
+      message: string
+      sources: AssistantDataSourceWire[]
+      composition: Record<string, unknown>
     }
 
 export type PublicChatRequest = {

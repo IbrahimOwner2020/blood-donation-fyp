@@ -97,7 +97,7 @@ export async function clientLoader({
       session,
       unitId: unitIdParam,
       message:
-        "Your session does not include inventory:read. The server remains the access authority.",
+        "You do not have permission to view this unit. Contact an administrator if you need access.",
     };
   }
 
@@ -137,7 +137,7 @@ export async function clientLoader({
         unitId: unitIdParam,
         message: formatApiErrorMessage(
           error,
-          "Inventory unit not found (or inventory server not mounted yet).",
+          "This inventory unit could not be found.",
         ),
       };
     }
@@ -148,7 +148,7 @@ export async function clientLoader({
         unitId: unitIdParam,
         message: formatApiErrorMessage(
           error,
-          "Inventory detail is not available yet. The inventory server may still be landing.",
+          "Inventory detail is not available right now.",
         ),
       };
     }
@@ -225,9 +225,8 @@ export default function InventoryDetailPage() {
           title="Inventory access restricted"
           message={
             data.message ||
-            "You do not have permission to view inventory (inventory:read)."
+            "You do not have permission to view inventory. Contact an administrator if you need access."
           }
-          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to="/inventory"
@@ -246,10 +245,10 @@ export default function InventoryDetailPage() {
       <div>
         <PageHeader
           title={`Inventory unit #${data.unitId}`}
-          description="Unit detail from GET /inventory/:id."
+          description="Inventory unit."
         />
         <EmptyState
-          title="Inventory server not available yet"
+          title="Inventory is not available right now"
           description={data.message}
           action={
             <Link
@@ -313,7 +312,7 @@ export default function InventoryDetailPage() {
     <div>
       <PageHeader
         title={`Inventory unit #${unit.id}`}
-        description="Status, dates, and facility assignment are server-owned. Expired units must be excluded from available stock by the server."
+        description="Status, dates, and the facility this unit is assigned to."
         actions={
           <Link
             to="/inventory"

@@ -31,6 +31,15 @@ export function listDemoUserSeeds(): DemoUserSeed[] {
             roleName: 'Administrator',
         },
         {
+            name: 'Demo Manager',
+            email: readEnv('DEMO_MANAGER_EMAIL', 'manager@nbts.local'),
+            password: readEnv(
+                'DEMO_MANAGER_PASSWORD',
+                'ChangeMe-Manager-Local-Only!',
+            ),
+            roleName: 'Manager',
+        },
+        {
             name: 'Demo Blood Bank Staff',
             email: readEnv('DEMO_OFFICER_EMAIL', 'officer@nbts.local'),
             password: readEnv(

@@ -41,3 +41,11 @@ export {
   type TransitionContext,
   type TransitionResult,
 } from './status-machine'
+export {
+  assertBloodRequestStatusPermission,
+  canMutateBloodRequestStatus,
+  permissionForRequestStatus,
+  REQUEST_APPROVE_PERMISSION,
+  REQUEST_ISSUE_PERMISSION,
+  REQUEST_STATUS_MUTATION_PERMISSIONS,
+} from './request-permissions'

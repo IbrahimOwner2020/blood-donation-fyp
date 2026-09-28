@@ -26,7 +26,25 @@ export const DONATION_CENTRE_SEEDS: readonly DonationCentreSeed[] = [
     {
         name: 'NBTS Arusha Collection Point',
         region: 'Arusha',
-        address: null,
+        address: 'Sokoine Road, Arusha',
+        active: true,
+    },
+    {
+        name: 'NBTS Dodoma Centre',
+        region: 'Dodoma',
+        address: 'Njedengwa, Dodoma',
+        active: true,
+    },
+    {
+        name: 'NBTS Mbeya Collection Point',
+        region: 'Mbeya',
+        address: 'Hospital Hill, Mbeya',
+        active: true,
+    },
+    {
+        name: 'NBTS Zanzibar Centre',
+        region: 'Mjini Magharibi',
+        address: 'Mnazi Mmoja, Zanzibar',
         active: true,
     },
 ] as const

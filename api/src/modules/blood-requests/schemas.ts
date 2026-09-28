@@ -130,7 +130,8 @@ export const createBloodRequestBodySchema = z.object({
 export type CreateBloodRequestBody = z.infer<typeof createBloodRequestBodySchema>
 
 /**
- * PATCH body — status change and/or fulfilment update (requests:update).
+ * PATCH body — status change and/or fulfilment update
+ * (requests:approve for APPROVED/CANCELLED; requests:issue for PARTIAL/FULFILLED).
  * Status is required; fulfilledUnits required when entering/staying PARTIAL.
  */
 export const patchBloodRequestBodySchema = z

@@ -8,6 +8,7 @@ export type AssistantToolSession = {
   sessionId: string
   permissions: readonly PermissionCode[]
   requestId: string | null
+  facilityId: number | null
   expiresAt: number
 }
 
@@ -26,6 +27,7 @@ export class AssistantToolSessionStore {
     sessionId: string
     permissions: readonly PermissionCode[]
     requestId?: string | null
+    facilityId?: number | null
   }): AssistantToolSession {
     this.prune()
     const token = randomToken()
@@ -35,6 +37,7 @@ export class AssistantToolSessionStore {
       sessionId: input.sessionId,
       permissions: input.permissions,
       requestId: input.requestId ?? null,
+      facilityId: input.facilityId ?? null,
       expiresAt: this.now() + this.ttlMs,
     }
     this.sessions.set(token, session)

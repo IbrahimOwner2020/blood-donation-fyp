@@ -5,7 +5,8 @@
  * Permissions (docs/10):
  * - GET list/detail → requests:read
  * - POST create → requests:create
- * - PATCH status/fulfilment → requests:update
+ * - PATCH approve/cancel → requests:approve
+ * - PATCH partial/fulfilled → requests:issue
  */
 
 import { Hono } from 'hono'
@@ -16,12 +17,20 @@ import { jsonOk } from '../../lib/response'
 import type { AppHonoEnv } from '../../lib/types'
 import { parseJsonBody, parseParams, parseQuery } from '../../lib/validate'
 import { requireAuth } from '../../middleware/require-auth'
-import { requirePermission } from '../../middleware/require-permission'
+import {
+  attachUserAccess,
+  requirePermission,
+} from '../../middleware/require-permission'
 import {
   BloodRequestAuditActions,
   recordActivity,
 } from '../../services/audit'
 import { requireHospitalFacilityId } from '../auth/access-scope'
+import { hasAnyPermission } from '../auth/user-access'
+import {
+  assertBloodRequestStatusPermission,
+  REQUEST_STATUS_MUTATION_PERMISSIONS,
+} from './request-permissions'
 import {
   bloodRequestIdParamSchema,
   createBloodRequestBodySchema,
@@ -137,14 +146,22 @@ bloodRequestRoutes.get(
 /**
  * PATCH /blood-requests/:id
  * Body: { status, fulfilledUnits? } — enforces status machine + unit rules.
+ * Approve/cancel need requests:approve; fulfilment needs requests:issue.
  * Audits significant status changes (docs/10).
  */
 bloodRequestRoutes.patch(
   '/:id',
-  requirePermission('requests:update'),
+  attachUserAccess(),
   async (c) => {
+    const granted = c.get('permissions')
+    if (!hasAnyPermission(granted, REQUEST_STATUS_MUTATION_PERMISSIONS)) {
+      throw AppError.forbidden('Insufficient permissions')
+    }
+
     const { id } = parseParams(c, bloodRequestIdParamSchema)
     const body = await parseJsonBody(c, patchBloodRequestBodySchema)
+    assertBloodRequestStatusPermission(granted, body.status)
+
     const actor = c.get('user')
     const facilityId = requireHospitalFacilityId(actor, c.get('roles'))
     if (typeof facilityId === 'number') {

@@ -24,7 +24,7 @@ def health() -> HealthResponse:
     return HealthResponse(service="ai-service", status="ok")
 
 
-@router.post("/chat", response_model=AssistantChatResponse)
+@router.post("/chat", response_model=AssistantChatResponse, response_model_exclude_none=True)
 def chat(request: AssistantChatRequest) -> AssistantChatResponse:
     return run_chat(request, settings=get_settings())
 

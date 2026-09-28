@@ -1,12 +1,7 @@
 import { AppError } from '../../lib/errors'
+import { logWarn } from '../../lib/logger'
 import { PERMISSION_CODES, type PermissionCode } from '../../lib/permissions'
 import type { Db } from '../../db/client'
-import { listDonations } from '../donations/service'
-import { listDonationsQuerySchema } from '../donations/schemas'
-import { listDonors } from '../donors/service'
-import { listDonorsQuerySchema } from '../donors/schemas'
-import { listInventory } from '../inventory/service'
-import { listInventoryQuerySchema } from '../inventory/schemas'
 import { previewNotifications, sendNotifications } from '../notifications/service'
 import {
   previewNotificationsBodySchema,
@@ -14,8 +9,23 @@ import {
 } from '../notifications/schemas'
 import { updateInventoryUnit } from '../inventory/service'
 import { updateInventoryBodySchema } from '../inventory/schemas'
+import { createDonor } from '../donors/service'
+import { createDonorBodySchema } from '../donors/schemas'
+import { createDonation } from '../donations/service'
+import { createDonationBodySchema } from '../donations/schemas'
+import { createBloodRequest } from '../blood-requests/service'
+import { createBloodRequestBodySchema } from '../blood-requests/schemas'
+import { runAiAnalysis } from '../ai-analysis/service'
+import { runAiAnalysisBodySchema } from '../ai-analysis/schemas'
+import {
+  BloodRequestAuditActions,
+  DonationAuditActions,
+  DonorAuditActions,
+  InventoryAuditActions,
+  recordActivity,
+} from '../../services/audit'
 import type { AiServiceClient } from '../../services/ai'
-import type { AssistantMessageBody } from './schemas'
+import type { AssistantCompositionPlan, AssistantDataSource, AssistantMessageBody } from './schemas'
 import { assistantResultSchema } from './schemas'
 import type { AssistantToolSession } from './tool-session-store'
 import {
@@ -26,9 +36,13 @@ import {
 type PermissionSet = readonly string[]
 
 export type AssistantActionName =
+  | 'donor.create'
+  | 'donation.create'
+  | 'blood_request.create'
   | 'notification.preview'
   | 'notification.send'
   | 'inventory.update'
+  | 'ai_analysis.run'
 
 export type AssistantActionProposal = {
   id: string
@@ -44,6 +58,9 @@ export type AssistantResult =
   | {
       type: 'answer'
       message: string
+      unavailableCode?: string
+      unavailableStage?: 'tools' | 'provider' | 'planning' | 'data' | 'composition'
+      retryable?: boolean
     }
   | {
       type: 'navigation'
@@ -61,6 +78,12 @@ export type AssistantResult =
       message: string
       proposal: AssistantActionProposal
     }
+  | {
+      type: 'composed_answer'
+      message: string
+      sources: AssistantDataSource[]
+      composition: AssistantCompositionPlan
+    }
 
 export type ExecuteAssistantActionResult = {
   message: string
@@ -77,6 +100,40 @@ export const AssistantAuditActions = {
 } as const
 
 const VALID_PERMISSION_CODES = new Set<string>(PERMISSION_CODES)
+
+type AssistantUnavailableResult = Extract<AssistantResult, { type: 'answer' }>
+
+function aiUnavailable(
+  code: string,
+  stage: NonNullable<AssistantUnavailableResult['unavailableStage']>,
+  message: string,
+): AssistantUnavailableResult {
+  return { type: 'answer', message, unavailableCode: code, unavailableStage: stage, retryable: true }
+}
+
+function describeAiFailure(error: unknown): AssistantUnavailableResult {
+  if (AppError.isAppError(error)) {
+    const aiCode = error.details?.[0]?.code ?? ''
+    if (aiCode === 'AI_TIMEOUT') {
+      return aiUnavailable(
+        'AI_TIMEOUT',
+        'provider',
+        'The AI assistant took longer than the API timeout (AI_REQUEST_TIMEOUT_MS). Please retry the request.',
+      )
+    }
+    if (aiCode === 'AI_INVALID_RESPONSE') {
+      return aiUnavailable('AI_INVALID_RESPONSE', 'provider', 'The AI service returned a response the API could not read. Please retry the request.')
+    }
+    if (aiCode && aiCode !== 'AI_SERVICE_UNAVAILABLE') {
+      return aiUnavailable(aiCode.slice(0, 80), 'provider', `The AI service failed: ${error.message.slice(0, 300)}`)
+    }
+  }
+  return aiUnavailable(
+    'AI_SERVICE_UNAVAILABLE',
+    'provider',
+    'The API could not reach the AI assistant. Check the AI service and try again.',
+  )
+}
 
 function hasPermission(permissions: PermissionSet, code: PermissionCode): boolean {
   return permissions.includes(code)
@@ -162,14 +219,6 @@ function extractChannel(text: string): 'SMS' | 'EMAIL' | undefined {
   if (/\bemail\b/.test(value)) return 'EMAIL'
   if (/\bsms\b|\btext\b/.test(value)) return 'SMS'
   return undefined
-}
-
-function isSystemReportRequest(message: string): boolean {
-  const text = normalizeText(message)
-  return (
-    /\b(overall|general|system|operations?|operational|status|report|summary|overview)\b/.test(text) &&
-    /\b(report|summary|overview|status|how are we|what is happening)\b/.test(text)
-  )
 }
 
 export function createAssistantProposal(
@@ -285,159 +334,6 @@ function dashboardFilterPath(body: AssistantMessageBody): string | null {
   return query ? `/dashboard?${query}` : null
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function itemsFrom(result: unknown): unknown[] {
-  if (Array.isArray(result)) return result
-  if (!isRecord(result)) return []
-  for (const key of ['items', 'data', 'results', 'alerts', 'donations', 'donors', 'inventory']) {
-    const value = result[key]
-    if (Array.isArray(value)) return value
-  }
-  return []
-}
-
-function totalFrom(result: unknown, items: unknown[]): number {
-  if (!isRecord(result)) return items.length
-  for (const key of ['total', 'totalItems', 'count']) {
-    const value = result[key]
-    if (typeof value === 'number' && Number.isFinite(value)) return value
-  }
-  return items.length
-}
-
-function displayField(record: Record<string, unknown>, key: string): string | null {
-  const value = record[key]
-  if (value === null || value === undefined || value === '') return null
-  if (isRecord(value)) {
-    for (const nested of ['code', 'name', 'fullName', 'label', 'id']) {
-      const nestedValue = value[nested]
-      if (nestedValue !== null && nestedValue !== undefined && nestedValue !== '') {
-        return String(nestedValue)
-      }
-    }
-    return null
-  }
-  if (Array.isArray(value)) {
-    return value.length ? value.slice(0, 3).map(String).join(', ') : null
-  }
-  if (typeof value === 'boolean') {
-    return value ? 'yes' : 'no'
-  }
-  return String(value)
-}
-
-function fieldLabel(key: string): string {
-  return key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim().toLowerCase()
-}
-
-function formatRecords(label: string, result: unknown, fields: string[]): string {
-  const items = itemsFrom(result)
-  const total = totalFrom(result, items)
-  if (total === 0) return `No ${label} matched that request.`
-
-  const rows = items.slice(0, 5).flatMap((item) => {
-    if (!isRecord(item)) return []
-    const id = displayField(item, 'id')
-    const details = fields
-      .map((field) => {
-        const value = displayField(item, field)
-        return value ? `${fieldLabel(field)} ${value}` : null
-      })
-      .filter((value): value is string => Boolean(value))
-    return `${id ? `#${id}: ` : ''}${details.join(', ')}`
-  })
-
-  if (!rows.length) return `I found ${total} ${label}, but the records did not include displayable fields.`
-  return `I found ${total} ${label}.${total > rows.length ? ` Showing ${rows.length}.` : ''}\n${rows.map((row) => `- ${row}`).join('\n')}`
-}
-
-async function maybeReadRecords(
-  db: Db,
-  message: string,
-  permissions: PermissionSet,
-): Promise<AssistantResult | null> {
-  const text = normalizeText(message)
-  if (!/\b(list|recent|search|find|show|summarize|summary|records?|units?|alerts?)\b/.test(text)) {
-    return null
-  }
-
-  if (/\binventory\b|\bstock\b|\bunits?\b/.test(text)) {
-    if (!hasPermission(permissions, 'inventory:read')) return deny('inventory:read')
-    const result = await listInventory(db, listInventoryQuerySchema.parse({ limit: 10 }))
-    return {
-      type: 'answer',
-      message: formatRecords('inventory units', result, ['bloodGroup', 'status', 'expiryDate', 'facilityId']),
-    }
-  }
-
-  if (/\bdonations?\b/.test(text)) {
-    if (!hasPermission(permissions, 'donations:read')) return deny('donations:read')
-    const result = await listDonations(db, listDonationsQuerySchema.parse({ limit: 10 }))
-    return {
-      type: 'answer',
-      message: formatRecords('donation records', result, ['donorId', 'bloodGroup', 'unitsCollected', 'donationDate', 'status']),
-    }
-  }
-
-  if (/\bdonors?\b/.test(text)) {
-    if (!hasPermission(permissions, 'donors:read')) return deny('donors:read')
-    const result = await listDonors(db, listDonorsQuerySchema.parse({ limit: 10 }))
-    return {
-      type: 'answer',
-      message: formatRecords('donor records', result, ['donorNumber', 'firstName', 'lastName', 'bloodGroup', 'eligibilityStatus', 'active']),
-    }
-  }
-
-  return null
-}
-
-async function systemReport(
-  db: Db,
-  permissions: PermissionSet,
-): Promise<AssistantResult> {
-  const sections: string[] = []
-
-  if (hasPermission(permissions, 'inventory:read')) {
-    const inventory = await listInventory(db, listInventoryQuerySchema.parse({ limit: 5 }))
-    sections.push(formatRecords('inventory units', inventory, ['bloodGroup', 'status', 'expiryDate', 'facilityId']))
-  }
-
-  if (hasPermission(permissions, 'donations:read')) {
-    const donations = await listDonations(db, listDonationsQuerySchema.parse({ limit: 5 }))
-    sections.push(formatRecords('donation records', donations, ['donorId', 'bloodGroup', 'unitsCollected', 'donationDate', 'status']))
-  }
-
-  if (hasPermission(permissions, 'donors:read')) {
-    const donors = await listDonors(db, listDonorsQuerySchema.parse({ limit: 5 }))
-    sections.push(formatRecords('donor records', donors, ['donorNumber', 'firstName', 'lastName', 'bloodGroup', 'eligibilityStatus', 'active']))
-  }
-
-  if (!sections.length) {
-    return {
-      type: 'permission_denied',
-      requiredPermission: 'reports:read',
-      message: 'Your account cannot access the operational data needed for an overall NBTS report.',
-    }
-  }
-
-  return {
-    type: 'answer',
-    message: `Overall NBTS operational report:\n\n${sections.join('\n\n')}`,
-  }
-}
-
-function contextualAnswer(body: AssistantMessageBody): AssistantResult {
-  const path = body.context?.pathname?.trim()
-  return {
-    type: 'answer',
-    message:
-      `I need a more specific question${path ? ` for ${path}` : ''} to access the right NBTS data. Ask for a summary, a record id, a filter, or an action.`,
-  }
-}
-
 export async function handleAssistantMessage(
   db: Db,
   body: AssistantMessageBody,
@@ -448,6 +344,7 @@ export async function handleAssistantMessage(
     toolsUrl?: string
   } = {},
 ): Promise<AssistantResult> {
+  let aiFailure: AssistantUnavailableResult | null = null
   if (options.aiClient && options.toolSession && options.toolsUrl) {
     try {
       const aiResult = await options.aiClient.chat({
@@ -458,27 +355,50 @@ export async function handleAssistantMessage(
         toolSessionToken: options.toolSession.token,
         toolsUrl: options.toolsUrl,
       })
-      const parsedResult = assistantResultSchema.parse(aiResult) as AssistantResult
-      if (parsedResult.type !== 'navigation') {
-        return parsedResult
-      }
+      const validation = assistantResultSchema.safeParse(aiResult)
+      if (!validation.success) {
+        const issue = validation.error.issues?.[0]
+        const path = issue?.path?.length ? issue.path.map(String).join('.') : 'response'
+        const detail = `${path}: ${issue?.message ?? 'Invalid value'}`.slice(0, 300)
+        const resultType = (aiResult as { type?: unknown } | null)?.type
+        logWarn('Assistant AI response failed API validation', {
+          resultType: typeof resultType === 'string' ? resultType : 'unknown',
+          issueCount: validation.error.issues?.length ?? 0,
+          detail,
+        })
+        aiFailure = aiUnavailable(
+          'ASSISTANT_RESPONSE_INVALID',
+          resultType === 'composed_answer' ? 'composition' : 'planning',
+          `The AI response did not match the API contract (${detail}). Please retry or rephrase the request.`,
+        )
+      } else {
+        const parsedResult = validation.data as AssistantResult
+        if (parsedResult.type !== 'navigation') {
+          return parsedResult
+        }
 
-      const target = resolveAssistantNavigationTarget(parsedResult.path)
-      if (!target) {
-        throw new Error('Assistant returned an unknown navigation target')
+        const target = resolveAssistantNavigationTarget(parsedResult.path)
+        if (!target) {
+          throw new Error('Assistant returned an unknown navigation target')
+        }
+        if (target.permission && !hasPermission(permissions, target.permission)) {
+          return deny(target.permission)
+        }
+        return {
+          type: 'navigation',
+          message: parsedResult.message,
+          path: target.path,
+          ...(target.permission ? { requiredPermission: target.permission } : {}),
+        }
       }
-      if (target.permission && !hasPermission(permissions, target.permission)) {
-        return deny(target.permission)
-      }
-      return {
-        type: 'navigation',
-        message: parsedResult.message,
-        path: target.path,
-        ...(target.permission ? { requiredPermission: target.permission } : {}),
-      }
-    } catch {
-      // Fall through to deterministic local handling when AI chat is unavailable
-      // or returns an invalid control payload.
+    } catch (error) {
+      // Controlled navigation and mutation proposals retain deterministic local
+      // handling. Data layouts never fall back to fixed report templates.
+      aiFailure = describeAiFailure(error)
+      logWarn('Assistant AI chat failed', {
+        code: aiFailure.unavailableCode,
+        reason: error instanceof Error ? error.message.slice(0, 300) : 'unknown',
+      })
     }
   }
 
@@ -487,13 +407,6 @@ export async function handleAssistantMessage(
 
   const action = maybeAction(body.message, permissions)
   if (action) return action
-
-  if (isSystemReportRequest(body.message)) {
-    return systemReport(db, permissions)
-  }
-
-  const records = await maybeReadRecords(db, body.message, permissions)
-  if (records) return records
 
   const text = normalizeText(body.message)
   if (/\b(filter|apply|period|from|to|blood group)\b/.test(text)) {
@@ -509,12 +422,7 @@ export async function handleAssistantMessage(
     }
   }
 
-  if (/\b(kpi|summary|dashboard|overview|available|low stock|alerts|donations)\b/.test(text)) {
-    if (!hasPermission(permissions, 'reports:read')) return deny('reports:read')
-    return systemReport(db, permissions)
-  }
-
-  return contextualAnswer(body)
+  return aiFailure ?? describeAiFailure(null)
 }
 
 export async function executeAssistantAction(
@@ -528,6 +436,62 @@ export async function executeAssistantAction(
   ensurePermission(permissions, proposal.requiredPermission)
 
   switch (proposal.action) {
+    case 'donor.create': {
+      const actorId = Number(proposal.payload.actorUserId)
+      const { actorUserId: _actorUserId, ...input } = proposal.payload
+      const body = createDonorBodySchema.parse(input)
+      const result = await createDonor(db, body)
+      await recordActivity({
+        actorUserId: Number.isFinite(actorId) ? actorId : null,
+        action: DonorAuditActions.CREATE,
+        entityType: 'donor',
+        entityId: result.id,
+        metadata: { donorNumber: result.donorNumber, bloodGroupId: result.bloodGroupId },
+      })
+      return {
+        action: proposal.action,
+        message: `Donor ${result.donorNumber} was registered.`,
+        data: { donor: result },
+      }
+    }
+    case 'donation.create': {
+      const actorId = Number(proposal.payload.actorUserId)
+      if (!Number.isFinite(actorId) || actorId < 1) throw AppError.unauthorized('Authenticated user required')
+      const { actorUserId: _actorUserId, ...input } = proposal.payload
+      const body = createDonationBodySchema.parse(input)
+      const result = await createDonation(db, body, actorId)
+      await recordActivity({
+        actorUserId: actorId,
+        action: DonationAuditActions.CREATE,
+        entityType: 'donation',
+        entityId: result.id,
+        metadata: { donorId: result.donorId, bloodGroupId: result.bloodGroupId, units: result.units },
+      })
+      return {
+        action: proposal.action,
+        message: `Donation #${result.id} was recorded and inventory was created.`,
+        data: { donation: result },
+      }
+    }
+    case 'blood_request.create': {
+      const actorId = Number(proposal.payload.actorUserId)
+      if (!Number.isFinite(actorId) || actorId < 1) throw AppError.unauthorized('Authenticated user required')
+      const { actorUserId: _actorUserId, ...input } = proposal.payload
+      const body = createBloodRequestBodySchema.parse(input)
+      const result = await createBloodRequest(db, body, actorId)
+      await recordActivity({
+        actorUserId: actorId,
+        action: BloodRequestAuditActions.CREATE,
+        entityType: 'blood_request',
+        entityId: result.id,
+        metadata: { facilityId: result.facilityId, bloodGroupId: result.bloodGroupId, unitsRequested: result.unitsRequested },
+      })
+      return {
+        action: proposal.action,
+        message: `Blood request #${result.id} was created.`,
+        data: { bloodRequest: result },
+      }
+    }
     case 'notification.preview': {
       const body = previewNotificationsBodySchema.parse(proposal.payload)
       const result = await previewNotifications(db, body)
@@ -561,10 +525,38 @@ export async function executeAssistantAction(
             : undefined,
       })
       const result = await updateInventoryUnit(db, inventoryId, body)
+      const actorId = Number(proposal.payload.actorUserId)
+      await recordActivity({
+        actorUserId: Number.isFinite(actorId) ? actorId : null,
+        action: InventoryAuditActions.UPDATE,
+        entityType: 'blood_inventory',
+        entityId: result.unit.id,
+        metadata: { status: result.unit.status, facilityId: result.unit.facilityId },
+      })
       return {
         action: proposal.action,
         message: `Inventory unit #${result.unit.id} was updated.`,
         data: result,
+      }
+    }
+    case 'ai_analysis.run': {
+      const actorId = Number(proposal.payload.actorUserId)
+      if (!Number.isFinite(actorId) || actorId < 1) throw AppError.unauthorized('Authenticated user required')
+      const body = runAiAnalysisBodySchema.parse({
+        horizonDays: proposal.payload.horizonDays,
+        notificationMode: proposal.payload.notificationMode ?? 'REPORT_ONLY',
+      })
+      if (body.notificationMode !== 'REPORT_ONLY') ensurePermission(permissions, 'notifications:send')
+      const result = await runAiAnalysis(db, {
+        triggerType: 'USER',
+        horizonDays: body.horizonDays,
+        notificationMode: body.notificationMode ?? 'REPORT_ONLY',
+        actor: { userId: actorId },
+      })
+      return {
+        action: proposal.action,
+        message: `AI analysis #${result.id} completed with status ${result.status}.`,
+        data: { report: result },
       }
     }
   }

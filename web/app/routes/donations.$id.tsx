@@ -94,7 +94,7 @@ export async function clientLoader({
       session,
       donationId: donationIdParam,
       message:
-        "Your session does not include donations:read. The server remains the access authority.",
+        "You do not have permission to view this donation. Contact an administrator if you need access.",
     };
   }
 
@@ -171,7 +171,7 @@ export async function clientAction({
   if (!hasUiPermission(session, UI_PERMISSIONS.donationsCreate)) {
     return {
       error:
-        "You do not have permission to update donations (donations:create).",
+        "You do not have permission to update this donation.",
     } satisfies DonationDetailActionData;
   }
   if (!Number.isFinite(donationId)) {
@@ -239,9 +239,8 @@ export default function DonationDetailPage() {
           title="Donation access restricted"
           message={
             data.message ||
-            "You do not have permission to view this donation (donations:read)."
+            "You do not have permission to view this donation. Contact an administrator if you need access."
           }
-          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to="/donations"
@@ -306,7 +305,7 @@ export default function DonationDetailPage() {
     <div>
       <PageHeader
         title={`Donation #${donation.id}`}
-        description="Detail from GET /donations/:id. Corrections for notes/centre use donations:create."
+        description="Donation record."
         actions={
           <Link
             to="/donations"
@@ -414,8 +413,8 @@ export default function DonationDetailPage() {
             Correct notes / centre
           </h2>
           <p className="mt-1 text-sm text-nbts-muted">
-            Donor, blood group, date, and units are immutable after inventory is
-            linked. server enforces this.
+            Donor, blood group, date, and units cannot be changed after inventory
+            is linked.
           </p>
           <Form method="post" className="mt-4 grid gap-4">
             <label className="flex flex-col gap-1 text-sm">

@@ -21,9 +21,8 @@ export const PERMISSION_CODES = [
   'inventory:update',
   'requests:read',
   'requests:create',
-  'requests:update',
-  'predictions:read',
-  'predictions:run',
+  'requests:approve',
+  'requests:issue',
   'alerts:read',
   'alerts:update',
   'notifications:read',
@@ -35,9 +34,9 @@ export type PermissionCode = (typeof PERMISSION_CODES)[number]
 
 export const ROLE_NAMES = [
   'Administrator',
+  'Manager',
   'Blood Bank Staff',
   'Hospital Staff',
-  'Registered Donor',
 ] as const
 
 export type RoleName = (typeof ROLE_NAMES)[number]

@@ -125,13 +125,14 @@ Or push to the connected GitHub branch and let Railway auto-deploy.
 | `DB_NAME` / `DB_USER` / `DB_PASSWORD` | From plugin variables |
 | `AI_SERVICE_URL` | `http://ai-service.railway.internal:8000` (use Railway private DNS / reference vars) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | Real SMTP provider |
-| `SMS_PROVIDER` | `mock` until a real provider is wired |
+| `SMS_PROVIDER` | `mock` until ready; then `beem` with `BEEM_API_KEY`, `BEEM_API_SECRET`, `BEEM_SENDER_ID` (or `nextsms` with `NEXTSMS_API_KEY` / `NEXTSMS_API_SECRET` / `NEXTSMS_SENDER_ID`) |
 | `RUN_MIGRATIONS` | `true` (entrypoint migrates on boot) |
 | `RUN_SEED` | `true` once for reference data; can leave on (idempotent) |
 | `SEED_ADMIN_USER` | `true` only when you want API boot to create one admin from `ADMIN_*` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Admin-only bootstrap user. Prefer a temporary password, then change it. |
 | `SEED_DEMO_USERS` | `false` for real ops; `true` only for demo Railway apps |
-| `SEED_DEMO_OPERATIONS` | `false` for real ops; `true` only when QA needs demo donors/donations/requests/demand |
+| `SEED_DEMO_OPERATIONS` | `false` for real ops; `true` only for an isolated QA database that needs the synthetic 60-day reporting dataset |
+| `DEMO_DATA_AS_OF` | Optional fixed `YYYY-MM-DD` anchor for a repeatable QA dataset; omit in real environments |
 | `DEMO_*` | Only if `SEED_DEMO_USERS=true` — still not real passwords in git |
 | `OLLAMA_ENABLED` | `false` (Ollama not used on Railway by default) |
 | `OLLAMA_MODEL` | only if using external Ollama |
@@ -200,6 +201,22 @@ ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD='replace-me' SKIP_ADMIN_MIGRATION=t
 ```
 
 With `NODE_ENV=production` and unset `SEED_DEMO_USERS` / `SEED_DEMO_OPERATIONS`, demo users and demo operations are **skipped**.
+
+## Assistant retention cleanup
+
+After deploying migration `0004_assistant_workspace.sql`, add a small Railway
+cron service from the `api` root, using the same database variables as the API:
+
+```text
+Schedule: 0 1 * * *
+Start command: bun run assistant:cleanup
+```
+
+The schedule is 01:00 UTC daily (04:00 in Tanzania). Railway cron configuration
+is service-level dashboard state, so it is not encoded in the API web-service
+`railway.json`. The command permanently removes expired assistant proposals,
+drafts, artifacts, messages (through cascade), and conversations. Run it only
+after API migration deployment; it does not need a public domain.
 
 ## CORS / cookies checklist
 

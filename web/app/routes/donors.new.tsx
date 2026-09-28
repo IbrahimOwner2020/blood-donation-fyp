@@ -72,7 +72,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include donors:create. The server remains the access authority.",
+        "You do not have permission to register donors. Contact an administrator if you need access.",
     };
   }
 
@@ -92,7 +92,7 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
   }
   if (!hasUiPermission(session, UI_PERMISSIONS.donorsCreate)) {
     return {
-      error: "You do not have permission to register donors (donors:create).",
+      error: "You do not have permission to register donors.",
     } satisfies DonorNewActionData;
   }
 
@@ -176,9 +176,8 @@ export default function DonorNewPage() {
           title="Create access restricted"
           message={
             data.message ||
-            "You do not have permission to register donors (donors:create)."
+            "You do not have permission to register donors. Contact an administrator if you need access."
           }
-          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to="/donors"
@@ -196,7 +195,7 @@ export default function DonorNewPage() {
     <div>
       <PageHeader
         title="Register donor"
-        description="Fields bind to the donors server. “Potentially eligible” means outreach-ready — not medical clearance."
+        description="“Potentially eligible” means the donor may be suitable for outreach. It is not a medical clearance."
         actions={
           <Link
             to="/donors"

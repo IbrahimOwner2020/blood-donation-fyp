@@ -1,6 +1,6 @@
 import type { AssistantActionProposal } from './service'
 
-const DEFAULT_TTL_MS = 5 * 60 * 1000
+const DEFAULT_TTL_MS = 15 * 60 * 1000
 
 type StoredAction = AssistantActionProposal & {
   userId: number

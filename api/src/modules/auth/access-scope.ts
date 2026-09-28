@@ -2,13 +2,12 @@ import { AppError } from '../../lib/errors'
 import type { AuthUser } from '../../lib/types'
 
 export const HOSPITAL_STAFF_ROLE = 'Hospital Staff'
-export const REGISTERED_DONOR_ROLE = 'Registered Donor'
 export const FACILITY_MANAGER_ROLE = 'Hospital Staff'
 
 export const FACILITY_ASSIGNABLE_ROLE_DENYLIST = new Set([
   'Administrator',
+  'Manager',
   'Blood Bank Staff',
-  'Registered Donor',
 ])
 
 export const FACILITY_ASSIGNABLE_PERMISSION_CODES = [
@@ -22,7 +21,8 @@ export const FACILITY_ASSIGNABLE_PERMISSION_CODES = [
   'inventory:update',
   'requests:read',
   'requests:create',
-  'requests:update',
+  'requests:approve',
+  'requests:issue',
   'alerts:read',
   'alerts:update',
   'notifications:read',
@@ -51,7 +51,7 @@ export function isFacilityManager(
 
 export function isFacilityAssignableRoleName(roleName: string): boolean {
   const name = roleName.trim()
-  return name === HOSPITAL_STAFF_ROLE || name === REGISTERED_DONOR_ROLE
+  return name === HOSPITAL_STAFF_ROLE
 }
 
 export function requireHospitalFacilityId(

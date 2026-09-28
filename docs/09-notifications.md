@@ -15,15 +15,19 @@ interface NotificationProvider {
 ```
 
 Implementations:
-- `MockSmsProvider`
+- `MockSmsProvider` (default when `SMS_PROVIDER=mock`)
+- `NextSmsProvider` (when `SMS_PROVIDER=nextsms`) — NextSMS single-destination HTTP API
+- `BeemSmsProvider` (when `SMS_PROVIDER=beem`) — Beem Africa `POST /v1/send`
 - `SmtpEmailProvider`
-- future real SMS provider
 
 ## Development
 
 Use Mailpit for email development.
 
-For SMS, store simulated messages in the database or a development inbox route.
+For SMS, keep `SMS_PROVIDER=mock` locally unless you intentionally send through a live gateway.
+
+- **NextSMS:** Basic auth maps account **username** → `NEXTSMS_API_KEY` and **password** → `NEXTSMS_API_SECRET`; `NEXTSMS_SENDER_ID` must be registered on the account. Prefer the NextSMS test URL for sandbox sends (see `.env.example`).
+- **Beem:** API key → `BEEM_API_KEY`, secret key → `BEEM_API_SECRET`; `BEEM_SENDER_ID` is the registered `source_addr`. Default endpoint is `https://apisms.beem.africa/v1/send`.
 
 ## Notification Workflow
 

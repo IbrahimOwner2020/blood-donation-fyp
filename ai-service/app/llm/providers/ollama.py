@@ -3,12 +3,47 @@
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 
 from app.errors import AiServiceError
 from app.llm.providers.base import ChatMessage, LlmCompletion
+
+# Low thinking still consumes output tokens. This budget leaves room for the
+# final JSON plan or composition after that reasoning.
+_GPT_OSS_NUM_PREDICT = 4096
+# Ollama can return done_reason=load before a cold model generates anything.
+# These pauses cover the usual gpt-oss cloud startup between attempts.
+_LOAD_RETRY_DELAYS_SECONDS = (0.5, 1.0, 2.0)
+_KEEP_ALIVE = "10m"
+
+
+def _json_object_from_text(text: str) -> str | None:
+    """Return the last JSON object embedded in model reasoning, if one exists."""
+    stripped = text.strip()
+    if not stripped:
+        return None
+    decoder = json.JSONDecoder()
+    found: dict[str, Any] | None = None
+    start = 0
+    while start < len(stripped):
+        index = stripped.find("{", start)
+        if index < 0:
+            break
+        try:
+            parsed, end = decoder.raw_decode(stripped, index)
+        except json.JSONDecodeError:
+            start = index + 1
+            continue
+        if isinstance(parsed, dict) and all(isinstance(key, str) for key in parsed):
+            found = {str(key): value for key, value in parsed.items()}
+        start = end
+    if found is None:
+        return None
+    return json.dumps(found, ensure_ascii=False)
 
 
 class OllamaProvider:
@@ -20,12 +55,14 @@ class OllamaProvider:
         api_key: str | None = None,
         timeout_seconds: float = 60.0,
         client: httpx.Client | None = None,
+        sleeper: Callable[[float], None] | None = None,
     ) -> None:
         self._base_url = (base_url or "").rstrip("/") or "http://localhost:11434"
         self._model = (model or "").strip() or "phi4"
         self._api_key = api_key.strip() if api_key and api_key.strip() else None
         self._timeout = timeout_seconds
         self._client = client
+        self._sleep = sleeper or time.sleep
 
     @property
     def provider_name(self) -> str:
@@ -36,17 +73,33 @@ class OllamaProvider:
         return self._model
 
     def complete(self, messages: list[ChatMessage]) -> LlmCompletion:
+        return self._complete(messages, load_attempt=0)
+
+    def _uses_gpt_oss_thinking(self) -> bool:
+        return self._model.lower().startswith("gpt-oss")
+
+    def _generation_options(self) -> dict[str, Any]:
+        options: dict[str, Any] = {"temperature": 0.1}
+        if self._uses_gpt_oss_thinking():
+            options["num_predict"] = _GPT_OSS_NUM_PREDICT
+        return options
+
+    def _complete(
+        self,
+        messages: list[ChatMessage],
+        *,
+        load_attempt: int,
+    ) -> LlmCompletion:
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": False,
             "format": "json",
+            "keep_alive": _KEEP_ALIVE,
             # GPT-OSS does not accept boolean thinking controls. Keeping its
             # reasoning level low leaves room for the final JSON response.
-            "think": "low" if self._model.lower().startswith("gpt-oss") else False,
-            "options": {
-                "temperature": 0.1,
-            },
+            "think": "low" if self._uses_gpt_oss_thinking() else False,
+            "options": self._generation_options(),
         }
         url = f"{self._base_url}/api/chat"
         headers = (
@@ -123,11 +176,26 @@ class OllamaProvider:
             content = raw_response.strip() if isinstance(raw_response, str) else ""
 
         if not content:
-            raise AiServiceError(
-                code="LLM_INVALID_RESPONSE",
-                message="Ollama returned an empty completion.",
-                status_code=502,
-            )
+            message_keys = sorted(message.keys()) if isinstance(message, dict) else []
+            thinking = message.get("thinking") if isinstance(message, dict) else None
+            done_reason = body.get("done_reason") if isinstance(body, dict) else None
+            if done_reason == "load" and load_attempt < len(_LOAD_RETRY_DELAYS_SECONDS):
+                self._sleep(_LOAD_RETRY_DELAYS_SECONDS[load_attempt])
+                return self._complete(messages, load_attempt=load_attempt + 1)
+            recovered = _json_object_from_text(thinking) if isinstance(thinking, str) else None
+            if recovered:
+                content = recovered
+            else:
+                raise AiServiceError(
+                    code="LLM_INVALID_RESPONSE",
+                    message=(
+                        "Ollama returned an empty completion "
+                        f"(done_reason={done_reason or 'unknown'}, "
+                        f"message_keys={','.join(message_keys) or 'none'}, "
+                        f"thinking_chars={len(thinking) if isinstance(thinking, str) else 0})."
+                    ),
+                    status_code=502,
+                )
 
         return LlmCompletion(
             content=content,

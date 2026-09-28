@@ -57,6 +57,20 @@ class ApiToolClient:
                 if isinstance(error, dict) and isinstance(error.get("message"), str)
                 else f"API assistant tool failed with HTTP {response.status_code}."
             )
+            details = error.get("details") if isinstance(error, dict) else None
+            if isinstance(details, list):
+                detail_parts: list[str] = []
+                for detail in details[:3]:
+                    if not isinstance(detail, dict):
+                        continue
+                    path = detail.get("path")
+                    detail_message = detail.get("message")
+                    if isinstance(detail_message, str) and detail_message.strip():
+                        detail_parts.append(
+                            f"{path}: {detail_message}" if isinstance(path, str) and path else detail_message
+                        )
+                if detail_parts:
+                    message = f"{message}: {'; '.join(detail_parts)}"
             code = (
                 error.get("code")
                 if isinstance(error, dict) and isinstance(error.get("code"), str)

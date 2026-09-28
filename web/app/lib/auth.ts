@@ -25,7 +25,8 @@ export const UI_PERMISSIONS = {
   inventoryUpdate: "inventory:update",
   requestsRead: "requests:read",
   requestsCreate: "requests:create",
-  requestsUpdate: "requests:update",
+  requestsApprove: "requests:approve",
+  requestsIssue: "requests:issue",
   alertsRead: "alerts:read",
   alertsUpdate: "alerts:update",
   notificationsRead: "notifications:read",
@@ -76,8 +77,6 @@ type LoginResponse = {
   permissions?: string[];
 };
 
-type RegisterDonorResponse = LoginResponse;
-
 type MeResponse = {
   user: PublicUserDto;
   roles?: string[];
@@ -122,47 +121,6 @@ export function toAuthSession(
     roleLabels,
     permissions,
   };
-}
-
-export type RegisterDonorInput = {
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
-  phone: string;
-  dateOfBirth: string;
-  sex: "MALE" | "FEMALE";
-  address: string;
-  weightKg: number;
-  smsConsent: boolean;
-  emailConsent: boolean;
-  bloodGroupId: number;
-};
-
-export async function registerDonorAccount(
-  input: RegisterDonorInput,
-): Promise<AuthSession> {
-  const data = await apiFetch<RegisterDonorResponse>("/auth/register-donor", {
-    method: "POST",
-    json: {
-      email: input.email.trim(),
-      password: input.password,
-      firstName: input.firstName.trim(),
-      lastName: input.lastName.trim(),
-      phone: input.phone.trim(),
-      dateOfBirth: input.dateOfBirth,
-      sex: input.sex,
-      address: input.address.trim(),
-      weightKg: input.weightKg,
-      smsConsent: input.smsConsent,
-      emailConsent: input.emailConsent,
-      bloodGroupId: input.bloodGroupId,
-    },
-  });
-  return sessionFromUser(data.user, {
-    roles: data?.roles,
-    permissions: data?.permissions,
-  });
 }
 
 /** Map API public user → UI session. */
@@ -247,6 +205,17 @@ export function hasUiPermission(
   }
   const permissions = session.permissions ?? [];
   return permissions.includes(code);
+}
+
+/** True when the session includes at least one of the listed permission codes. */
+export function hasAnyUiPermission(
+  session: AuthSession | null | undefined,
+  candidates: readonly string[] = [],
+): boolean {
+  if (!session?.userId || !candidates?.length) {
+    return false;
+  }
+  return candidates.some((permission) => hasUiPermission(session, permission));
 }
 
 /**

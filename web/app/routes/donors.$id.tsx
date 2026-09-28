@@ -100,7 +100,7 @@ async function loadDonationHistory(
     return {
       status: "skipped",
       message:
-        "Donation history requires donations:read. Contact an administrator if you need access.",
+        "Donation history is not available for your account.",
     };
   }
 
@@ -139,7 +139,7 @@ async function loadNotificationHistory(
     return {
       status: "skipped",
       message:
-        "Notification history requires notifications:read. Contact an administrator if you need access.",
+        "Notification history is not available for your account.",
     };
   }
 
@@ -190,7 +190,7 @@ export async function clientLoader({
       session,
       donorId: donorIdParam,
       message:
-        "Your session does not include donors:read. The server remains the access authority.",
+        "You do not have permission to view this donor. Contact an administrator if you need access.",
     };
   }
 
@@ -258,7 +258,7 @@ export async function clientAction({
   }
   if (!hasUiPermission(session, UI_PERMISSIONS.donorsUpdate)) {
     return {
-      error: "You do not have permission to update donors (donors:update).",
+      error: "You do not have permission to update donors.",
     } satisfies DonorDetailActionData;
   }
   if (!Number.isFinite(donorId)) {
@@ -365,9 +365,8 @@ export default function DonorDetailPage() {
           title="Donor access restricted"
           message={
             data.message ||
-            "You do not have permission to view this donor (donors:read)."
+            "You do not have permission to view this donor. Contact an administrator if you need access."
           }
-          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to="/donors"
@@ -507,6 +506,7 @@ export default function DonorDetailPage() {
       </section>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        {donations.status === "skipped" ? null : (
         <HistoryPanel title="Donation history">
           {donations.status === "ok" && (donations.items?.length ?? 0) > 0 ? (
             <>
@@ -556,7 +556,7 @@ export default function DonorDetailPage() {
           ) : donations.status === "ok" ? (
             <EmptyState
               title="No donations yet"
-              description="No donation records are linked to this donor in the server."
+              description="No donations are linked to this donor."
               action={
                 <ProtectedUi
                   session={session}
@@ -579,7 +579,9 @@ export default function DonorDetailPage() {
             />
           )}
         </HistoryPanel>
+        )}
 
+        {notifications.status === "skipped" ? null : (
         <HistoryPanel title="Notification history">
           {notifications.status === "ok" &&
           (notifications.items?.length ?? 0) > 0 ? (
@@ -629,7 +631,7 @@ export default function DonorDetailPage() {
           ) : notifications.status === "ok" ? (
             <EmptyState
               title="No notifications yet"
-              description="No notification records are linked to this donor in the server."
+              description="No notifications are linked to this donor."
             />
           ) : (
             <EmptyState
@@ -638,6 +640,7 @@ export default function DonorDetailPage() {
             />
           )}
         </HistoryPanel>
+        )}
       </div>
 
       <ProtectedUi session={session} gate={UI_PERMISSIONS.donorsUpdate}>

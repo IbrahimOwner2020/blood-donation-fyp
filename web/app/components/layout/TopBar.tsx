@@ -9,7 +9,7 @@ type TopBarProps = {
 
 export function TopBar({ session, onMenuClick }: TopBarProps) {
   const displayName = session?.displayName || "Signed in";
-  const roleLabel = session?.roleLabels?.[0] || "Staff";
+  const roleLabel = session?.roleLabels?.[0] || "Donor";
 
   return (
     <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-nbts-border bg-nbts-panel px-3 py-2 sm:px-6">

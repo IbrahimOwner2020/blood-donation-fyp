@@ -229,8 +229,7 @@ export default function AdminUsersNewPage() {
         <PageHeader title="New user" />
         <ForbiddenState
           title="Missing permission"
-          message="users:manage is required to create users."
-          detail="UI gate: users:manage | users:manage:facility"
+          message="You do not have permission to create users. Contact an administrator if you need access."
           action={
             <Link to="/admin/users" className="text-sm text-nbts-teal underline">
               Back to users
@@ -363,7 +362,7 @@ export default function AdminUsersNewPage() {
               Initial roles
             </legend>
             <p className="text-xs text-nbts-muted">
-              Optional. The server limits facility managers to facility-safe roles.
+              Optional. Facility managers can assign only roles meant for their facility.
             </p>
             {roles.length === 0 ? (
               <p className="text-sm text-nbts-muted">No roles available.</p>

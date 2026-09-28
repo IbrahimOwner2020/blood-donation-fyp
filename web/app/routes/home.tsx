@@ -87,7 +87,6 @@ export default function HomePage() {
           <Link to="/" className="font-bold text-nbts-blood">Blood Donation Management System</Link>
           <nav className="flex gap-2" aria-label="Account">
             <Link to="/login" className="rounded border border-nbts-border px-4 py-2 text-sm font-semibold">Sign in</Link>
-            <Link to="/register-donor" className="rounded bg-nbts-blood px-4 py-2 text-sm font-semibold text-white">Register as donor</Link>
           </nav>
         </div>
       </header>

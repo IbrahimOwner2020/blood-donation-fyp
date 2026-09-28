@@ -131,12 +131,11 @@ export default function AdminUsersPage() {
       <div>
         <PageHeader
           title="Admin · Users"
-          description="User administration. Permission checks are enforced by the server."
+          description="User administration."
         />
         <ForbiddenState
           title="Missing permission"
-          message="User management permission is required to list or edit users. The server remains the authority."
-          detail="UI gate: users:manage | users:manage:facility"
+          message="You do not have permission to view users. Contact an administrator if you need access."
         />
       </div>
     );
@@ -171,7 +170,7 @@ export default function AdminUsersPage() {
     <div>
       <PageHeader
         title="Admin · Users"
-        description="Create and manage staff accounts. The server scopes facility managers to their assigned facility."
+        description="Create and manage staff accounts."
         actions={
           <Link
             to="/admin/users/new"

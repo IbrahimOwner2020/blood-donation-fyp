@@ -134,3 +134,28 @@ Suggested:
 - training: longer, preferably background/manual invocation.
 
 Never leave frontend HTTP requests waiting indefinitely for model training.
+
+## Assistant orchestration contract
+
+FastAPI selects up to six permission-filtered read tools and returns a
+`composed_answer` containing the executed query plan plus a declarative layout
+from the approved component palette. Hono replays the query plan, rechecks
+permission and facility scope, resolves every binding/calculation, strips
+contact fields, and creates the client-facing composition. Mutating tools remain
+single-call proposals with explicit confirmation.
+
+Supported bound operations are value, count, sum, average, minimum, maximum,
+difference, and percentage change. Layouts may contain stack/grid/column
+sections with narrative, metrics, comparisons, tables, line/bar/stacked-bar/
+area/pie/donut charts, ranked lists, status summaries, timelines, notices, and
+recommendations. Unknown paths, contact fields, arbitrary markup, unsupported
+operations, and model-supplied operational values are rejected.
+
+Only an explicit report/export request creates a version-2 immutable artifact.
+Refresh replays its stored query plan and preserves its composition plan. If the
+LLM is unavailable or its layout remains invalid after one repair attempt, the
+assistant returns a visible unavailable state; fixed report layouts are not used.
+
+Manual AI analysis defaults to `REPORT_ONLY`. Any notification-producing mode
+also requires `notifications:send`, explicit intent, a persisted proposal, and
+confirmation.

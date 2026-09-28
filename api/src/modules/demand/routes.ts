@@ -2,9 +2,8 @@
  * Demand record routes (TODO.md §5, docs/06 demand_records, docs/14 AI shapes).
  * Mounted under /api/v1/demand-records.
  *
- * Permissions (docs/10 — demand feeds predictions):
- * - GET list / export → predictions:read
- * - POST sync → predictions:run
+ * Permissions: demand history is operational data for reports.
+ * - GET list / export / POST sync → reports:read
  */
 
 import { Hono } from 'hono'
@@ -51,7 +50,7 @@ demandRoutes.use('*', requireAuth)
  * GET /demand-records
  * Query: bloodGroupId? | bloodGroup?, facilityId?, from?, to?, source?, limit?, offset?
  */
-demandRoutes.get('/', requirePermission('predictions:read'), async (c) => {
+demandRoutes.get('/', requirePermission('reports:read'), async (c) => {
   const query = parseQuery(c, listDemandRecordsQuerySchema)
   const result = await listDemandRecords(getDb(), query)
   return jsonOk(c, {
@@ -71,7 +70,7 @@ demandRoutes.get('/', requirePermission('predictions:read'), async (c) => {
  */
 demandRoutes.get(
   '/export',
-  requirePermission('predictions:read'),
+  requirePermission('reports:read'),
   async (c) => {
     const query = parseQuery(c, exportDemandQuerySchema)
     const result = await exportDemandSeries(getDb(), query)
@@ -84,7 +83,7 @@ demandRoutes.get(
  * Body: { from?, to?, facilityId?, bloodGroupId? | bloodGroup? }
  * Idempotent upsert from APPROVED/PARTIAL/FULFILLED blood requests.
  */
-demandRoutes.post('/sync', requirePermission('predictions:run'), async (c) => {
+demandRoutes.post('/sync', requirePermission('reports:read'), async (c) => {
   const body = await parseJsonBody(c, syncDemandBodySchema)
   const actor = c.get('user')
   const sync = await syncDemandFromBloodRequests(getDb(), body)

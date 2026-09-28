@@ -1,4 +1,5 @@
 import type { NotificationChannel, NotificationProvider } from './types'
+import { BeemSmsProvider } from './providers/beem-sms-provider'
 import { MockSmsProvider } from './providers/mock-sms-provider'
 import { NextSmsProvider } from './providers/nextsms-provider'
 import {
@@ -6,7 +7,7 @@ import {
   type SmtpEmailConfig,
 } from './providers/smtp-email-provider'
 
-export type SmsProviderKind = 'mock' | 'nextsms'
+export type SmsProviderKind = 'mock' | 'nextsms' | 'beem'
 
 export interface NotificationEnv {
   SMS_PROVIDER?: string
@@ -20,6 +21,10 @@ export interface NotificationEnv {
   NEXTSMS_API_KEY?: string
   NEXTSMS_API_SECRET?: string
   NEXTSMS_SENDER_ID?: string
+  BEEM_BASE_URL?: string
+  BEEM_API_KEY?: string
+  BEEM_API_SECRET?: string
+  BEEM_SENDER_ID?: string
 }
 
 /**
@@ -72,9 +77,17 @@ export function createSmsProvider(
       senderId: env.NEXTSMS_SENDER_ID?.trim() ?? '',
     })
   }
+  if (kind === 'beem') {
+    return new BeemSmsProvider({
+      baseUrl: (env.BEEM_BASE_URL ?? 'https://apisms.beem.africa/v1/send').trim(),
+      apiKey: env.BEEM_API_KEY?.trim() ?? '',
+      apiSecret: env.BEEM_API_SECRET?.trim() ?? '',
+      senderId: env.BEEM_SENDER_ID?.trim() ?? '',
+    })
+  }
 
   throw new Error(
-    `Unsupported SMS_PROVIDER="${kind}". Supported: mock, nextsms`,
+    `Unsupported SMS_PROVIDER="${kind}". Supported: mock, nextsms, beem`,
   )
 }
 

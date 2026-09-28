@@ -39,8 +39,6 @@ import { AiAnalysisAuditActions, recordActivity } from '../../services/audit'
 import { syncDemandFromBloodRequests } from '../demand'
 import { listMatchesForAlert } from '../alerts/matching-service'
 import { sendNotifications } from '../notifications/service'
-import { runPrediction } from '../predictions/service'
-import { afterPredictionPersisted } from '../alerts/hooks'
 import type { ListAiAnalysisQuery } from './schemas'
 import {
   toPublicAiAnalysisRun,
@@ -525,23 +523,9 @@ export async function runAiAnalysis(
 
     const groups = await getBloodGroups(db)
     for (const group of groups) {
-      try {
-        const result = await runPrediction(
-          db,
-          {
-            bloodGroupId: group.id,
-            horizonDays: horizonDays as 7 | 14 | 30 | 60,
-            syncDemand: false,
-            train: false,
-          },
-          { afterPredictionPersisted },
-        )
-        predictionIds.push(result.prediction.id)
-      } catch (error) {
-        failures.push(
-          `${group.code}: ${error instanceof Error ? error.message : 'unknown forecast failure'}`,
-        )
-      }
+      failures.push(
+        `${group.code ?? 'unknown'}: demand forecasting has been removed`,
+      )
     }
 
     const alertRows = await alertsForPredictions(db, predictionIds)

@@ -11,10 +11,10 @@ import {
 export default [
     index("routes/home.tsx"),
     route("login", "routes/login.tsx"),
-    route("register-donor", "routes/register-donor.tsx"),
     route("logout", "routes/logout.tsx"),
     layout("routes/app-layout.tsx", [
         route("dashboard", "routes/dashboard.tsx"),
+        route("assistant", "routes/assistant.tsx"),
         route("my-donor-profile", "routes/my-donor-profile.tsx"),
 
         route("donors", "routes/donors._index.tsx"),
@@ -32,6 +32,8 @@ export default [
         route("blood-requests", "routes/blood-requests._index.tsx"),
         route("blood-requests/new", "routes/blood-requests.new.tsx"),
         route("blood-requests/:id", "routes/blood-requests.$id.tsx"),
+
+        route("alerts", "routes/alerts._index.tsx"),
 
         route("notifications", "routes/notifications._index.tsx"),
         route("notifications/new", "routes/notifications.new.tsx"),

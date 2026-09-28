@@ -116,7 +116,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include notifications:read. The server remains the access authority.",
+        "You do not have permission to view notifications. Contact an administrator if you need access.",
       filters,
     };
   }
@@ -194,15 +194,14 @@ export default function NotificationsIndexPage() {
       <div>
         <PageHeader
           title="Notifications"
-          description="Preview and send history. Providers and matching logic stay on the server."
+          description="Sent messages and their delivery status."
         />
         <ForbiddenState
           title="Notifications access restricted"
           message={
             loaderData.message ||
-            "You do not have permission to view notifications (notifications:read)."
+            "You do not have permission to view notifications. Contact an administrator if you need access."
           }
-          detail="UI gate only — the server enforces authorization."
         />
       </div>
     );
@@ -245,18 +244,12 @@ export default function NotificationsIndexPage() {
     <div>
       <PageHeader
         title="Notifications"
-        description="Send history from the server. Nothing is sent from this list — compose requires preview and an explicit confirm."
+        description="List of notifications sent by the system."
         actions={
           <ProtectedUi
             session={session}
             gate={UI_PERMISSIONS.notificationsSend}
-            fallback={
-              !canSend ? (
-                <span className="text-sm text-nbts-muted">
-                  Compose requires notifications:send
-                </span>
-              ) : null
-            }
+            fallback={null}
           >
             <Link
               to="/notifications/new"
@@ -342,7 +335,7 @@ export default function NotificationsIndexPage() {
           title="No notifications loaded"
           description={
             unavailableMessage ||
-            "Channel, recipient, status, and timestamps will appear when the server returns history."
+            "Channel, recipient, status, and time will appear here when messages have been sent."
           }
           action={
             canSend ? (

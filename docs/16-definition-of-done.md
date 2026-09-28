@@ -59,6 +59,17 @@ Dashboard shows:
 - donor activity;
 - notification statistics.
 
+## AI Operations Assistant
+
+- Authorized staff can open `/assistant`, create/rename/switch/delete owner-only conversations, and reopen retained messages.
+- English and Kiswahili responses let the LLM compose validated responsive sections from the safe narrative, KPI, comparison, table, chart, ranking, status, timeline, notice, and recommendation palette.
+- Numeric and tabular values are resolved from replayed API tool results; arbitrary markup, unknown bindings, sensitive contact fields, and model-supplied operational figures are rejected.
+- Explicit report requests create immutable version-2 snapshots; refresh preserves the layout and creates a new snapshot; composition-matching PDF and per-table injection-safe UTF-8 CSV exports are audited.
+- Current permissions and facility scope are rechecked when reading/exporting reports and confirming actions.
+- Donor, donation, blood-request, inventory, notification, and AI-analysis mutations use canonical API services and require an editable preview plus explicit confirmation.
+- Message history and audit metadata do not retain donor phone/email values or full executable proposal payloads.
+- The daily assistant cleanup command is scheduled in deployed environments.
+
 ## Docker
 
 The system starts from a clean machine with:

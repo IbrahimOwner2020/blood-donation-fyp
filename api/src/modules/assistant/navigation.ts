@@ -9,6 +9,7 @@ export const ASSISTANT_NAVIGATION_PATHS = [
   '/donations',
   '/inventory',
   '/blood-requests',
+  '/alerts',
   '/notifications',
   '/reports',
   '/admin/users',
@@ -30,10 +31,11 @@ export const ASSISTANT_NAVIGATION_TARGETS: readonly AssistantNavigationTarget[] 
   { keywords: ['my donor profile', 'donor profile', 'profile'], path: '/my-donor-profile', label: 'donor profile' },
   { keywords: ['donor', 'donors'], path: '/donors', label: 'donors', permission: 'donors:read' },
   { keywords: ['donation', 'donations'], path: '/donations', label: 'donations', permission: 'donations:read' },
-  { keywords: ['inventory', 'stock', 'units', 'alert', 'alerts'], path: '/inventory', label: 'inventory', permission: 'inventory:read' },
+  { keywords: ['inventory', 'stock', 'units'], path: '/inventory', label: 'inventory', permission: 'inventory:read' },
   { keywords: ['request', 'requests'], path: '/blood-requests', label: 'blood requests', permission: 'requests:read' },
+  { keywords: ['alert', 'alerts', 'shortage'], path: '/alerts', label: 'alerts', permission: 'alerts:read' },
   { keywords: ['notify', 'notification', 'notifications'], path: '/notifications', label: 'notifications', permission: 'notifications:read' },
-  { keywords: ['report', 'reports', 'forecast', 'prediction'], path: '/reports', label: 'reports', permission: 'reports:read' },
+  { keywords: ['report', 'reports'], path: '/reports', label: 'reports', permission: 'reports:read' },
   { keywords: ['users', 'user admin'], path: '/admin/users', label: 'users', permission: 'users:manage' },
   { keywords: ['facility', 'facilities'], path: '/admin/facilities', label: 'facilities', permission: 'facilities:read' },
   { keywords: ['activity', 'audit'], path: '/admin/activity', label: 'activity', permission: 'activity:read' },
@@ -43,8 +45,6 @@ export const assistantNavigationPathSchema = z.enum(ASSISTANT_NAVIGATION_PATHS)
 
 const ASSISTANT_NAVIGATION_ALIASES: Readonly<Record<string, AssistantNavigationPath>> = {
   '/facilities': '/admin/facilities',
-  '/alerts': '/inventory',
-  '/predictions': '/reports',
 }
 
 export function findAssistantNavigationTarget(
@@ -58,4 +58,13 @@ export function resolveAssistantNavigationTarget(
 ): AssistantNavigationTarget | undefined {
   const canonicalPath = ASSISTANT_NAVIGATION_ALIASES[path] ?? path
   return findAssistantNavigationTarget(canonicalPath)
+}
+
+export function resolveAssistantNavigationLabel(
+  label: string = '',
+): AssistantNavigationTarget | undefined {
+  const text = label.trim().toLowerCase()
+  if (!text) return undefined
+  return resolveAssistantNavigationTarget(text.startsWith('/') ? text : `/${text}`)
+    ?? ASSISTANT_NAVIGATION_TARGETS.find((target) => target.keywords.some((keyword) => text.includes(keyword)))
 }

@@ -479,6 +479,58 @@ export function allowedNextStatuses(
   return BLOOD_REQUEST_TRANSITIONS[status] ?? [];
 }
 
+/** Statuses that need requests:approve on the API. */
+export const APPROVE_PERMISSION_STATUSES: readonly BloodRequestStatus[] = [
+  "APPROVED",
+  "CANCELLED",
+];
+
+/** Statuses that need requests:issue on the API. */
+export const ISSUE_PERMISSION_STATUSES: readonly BloodRequestStatus[] = [
+  "PARTIAL",
+  "FULFILLED",
+];
+
+export type RequestStatusPermissionFlags = {
+  canApprove?: boolean;
+  canIssue?: boolean;
+};
+
+/**
+ * Next statuses allowed by the status machine and the actor's approve/issue flags.
+ * Display only — the API still enforces permissions.
+ */
+export function allowedNextStatusesForPermissions(
+  status: BloodRequestStatus,
+  flags: RequestStatusPermissionFlags = {},
+): BloodRequestStatus[] {
+  const canApprove = Boolean(flags?.canApprove);
+  const canIssue = Boolean(flags?.canIssue);
+  return (allowedNextStatuses(status) ?? []).filter((next) => {
+    if (APPROVE_PERMISSION_STATUSES.includes(next)) {
+      return canApprove;
+    }
+    if (ISSUE_PERMISSION_STATUSES.includes(next)) {
+      return canIssue;
+    }
+    return false;
+  });
+}
+
+/** True when the UI session may submit this next status (API still enforces). */
+export function canApplyRequestStatus(
+  nextStatus: BloodRequestStatus,
+  flags: RequestStatusPermissionFlags = {},
+): boolean {
+  if (APPROVE_PERMISSION_STATUSES.includes(nextStatus)) {
+    return Boolean(flags?.canApprove);
+  }
+  if (ISSUE_PERMISSION_STATUSES.includes(nextStatus)) {
+    return Boolean(flags?.canIssue);
+  }
+  return false;
+}
+
 export function isTerminalRequestStatus(status: BloodRequestStatus): boolean {
   return (BLOOD_REQUEST_TRANSITIONS[status] ?? []).length === 0;
 }
@@ -644,15 +696,6 @@ export function formatApiErrorMessage(
     return error.message;
   }
   return fallback;
-}
-
-export function transitionMachineSummary(): string {
-  return [
-    "PENDING → APPROVED | CANCELLED",
-    "APPROVED → PARTIAL | FULFILLED | CANCELLED",
-    "PARTIAL → PARTIAL | FULFILLED | CANCELLED",
-    "FULFILLED / CANCELLED → (terminal)",
-  ].join(" · ");
 }
 
 export { BLOOD_GROUP_OPTIONS };

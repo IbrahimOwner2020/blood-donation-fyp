@@ -107,6 +107,54 @@ export const DEMO_DONOR_SEEDS: readonly DemoDonorSeed[] = [
     email: 'faraji.said@nbts.demo.local',
     bloodGroupCode: 'B+',
   },
+  {
+    donorNumber: 'NBTS-DEMO-D007',
+    firstName: 'Grace',
+    lastName: 'Mushi',
+    phone: '+255700000007',
+    email: 'grace.mushi@nbts.demo.local',
+    bloodGroupCode: 'A-',
+  },
+  {
+    donorNumber: 'NBTS-DEMO-D008',
+    firstName: 'Hassan',
+    lastName: 'Ally',
+    phone: '+255700000008',
+    email: 'hassan.ally@nbts.demo.local',
+    bloodGroupCode: 'AB-',
+  },
+  {
+    donorNumber: 'NBTS-DEMO-D009',
+    firstName: 'Irene',
+    lastName: 'Lyimo',
+    phone: '+255700000009',
+    email: 'irene.lyimo@nbts.demo.local',
+    bloodGroupCode: 'O+',
+  },
+  {
+    donorNumber: 'NBTS-DEMO-D010',
+    firstName: 'Joseph',
+    lastName: 'Mollel',
+    phone: '+255700000010',
+    email: 'joseph.mollel@nbts.demo.local',
+    bloodGroupCode: 'A+',
+  },
+  {
+    donorNumber: 'NBTS-DEMO-D011',
+    firstName: 'Neema',
+    lastName: 'Kessy',
+    phone: '+255700000011',
+    email: 'neema.kessy@nbts.demo.local',
+    bloodGroupCode: 'O-',
+  },
+  {
+    donorNumber: 'NBTS-DEMO-D012',
+    firstName: 'Peter',
+    lastName: 'Shirima',
+    phone: '+255700000012',
+    email: 'peter.shirima@nbts.demo.local',
+    bloodGroupCode: 'B+',
+  },
 ] as const
 
 export const DEMO_DONATION_SEEDS: readonly DemoDonationSeed[] = [
@@ -142,6 +190,38 @@ export const DEMO_DONATION_SEEDS: readonly DemoDonationSeed[] = [
     facilityName: null,
     notesKey: 'DEMO-OPS-DON-004',
   },
+  {
+    donorNumber: 'NBTS-DEMO-D007',
+    centreName: 'NBTS Dodoma Centre',
+    donationDateOffsetDays: -3,
+    units: 1,
+    facilityName: 'Benjamin Mkapa Hospital',
+    notesKey: 'DEMO-OPS-DON-005',
+  },
+  {
+    donorNumber: 'NBTS-DEMO-D009',
+    centreName: 'NBTS Dar es Salaam Centre',
+    donationDateOffsetDays: -4,
+    units: 1,
+    facilityName: 'Temeke Regional Referral Hospital',
+    notesKey: 'DEMO-OPS-DON-006',
+  },
+  {
+    donorNumber: 'NBTS-DEMO-D010',
+    centreName: 'NBTS Arusha Collection Point',
+    donationDateOffsetDays: -6,
+    units: 1,
+    facilityName: 'Kilimanjaro Christian Medical Centre',
+    notesKey: 'DEMO-OPS-DON-007',
+  },
+  {
+    donorNumber: 'NBTS-DEMO-D012',
+    centreName: 'NBTS Mbeya Collection Point',
+    donationDateOffsetDays: -1,
+    units: 1,
+    facilityName: 'Mbeya Zonal Referral Hospital',
+    notesKey: 'DEMO-OPS-DON-008',
+  },
 ] as const
 
 /**
@@ -169,6 +249,36 @@ export const DEMO_BLOOD_REQUEST_SEEDS: readonly DemoBloodRequestSeed[] = [
     fulfilledUnits: 2,
     requiredAtOffsetDays: 1,
   },
+  {
+    requestKey: 'DEMO-REQ-PENDING-O-',
+    facilityName: 'Mnazi Mmoja Hospital',
+    bloodGroupCode: 'O-',
+    unitsRequested: 4,
+    priority: 'URGENT',
+    status: 'PENDING',
+    fulfilledUnits: 0,
+    requiredAtOffsetDays: 1,
+  },
+  {
+    requestKey: 'DEMO-REQ-PENDING-B+',
+    facilityName: 'Mbeya Zonal Referral Hospital',
+    bloodGroupCode: 'B+',
+    unitsRequested: 6,
+    priority: 'MEDIUM',
+    status: 'PENDING',
+    fulfilledUnits: 0,
+    requiredAtOffsetDays: 5,
+  },
+  {
+    requestKey: 'DEMO-REQ-APPROVED-AB-',
+    facilityName: 'Benjamin Mkapa Hospital',
+    bloodGroupCode: 'AB-',
+    unitsRequested: 3,
+    priority: 'HIGH',
+    status: 'APPROVED',
+    fulfilledUnits: 1,
+    requiredAtOffsetDays: 2,
+  },
 ] as const
 
 /** ≥30 days O+ demand so forecast / LLM training thresholds are met. */
@@ -179,6 +289,20 @@ export const DEMO_DEMAND_SERIES_SEEDS: readonly DemoDemandSeriesSeed[] = [
     facilityName: 'Muhimbili National Hospital',
     dayCount: 35,
     baseUnitsRequested: 4,
+  },
+  {
+    seriesKey: 'DEMO-DEMAND-A+-35D',
+    bloodGroupCode: 'A+',
+    facilityName: 'Kilimanjaro Christian Medical Centre',
+    dayCount: 35,
+    baseUnitsRequested: 3,
+  },
+  {
+    seriesKey: 'DEMO-DEMAND-B+-35D',
+    bloodGroupCode: 'B+',
+    facilityName: 'Mbeya Zonal Referral Hospital',
+    dayCount: 35,
+    baseUnitsRequested: 2,
   },
 ] as const
 

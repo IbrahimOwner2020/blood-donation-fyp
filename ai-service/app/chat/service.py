@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
-from typing import Any, Protocol
+from datetime import date
+from typing import Any, Literal, Protocol
+
+from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 from app.errors import AiServiceError
@@ -24,6 +28,9 @@ class ToolClient(Protocol):
     def call_tool(self, name: str, arguments: dict[str, Any]) -> Any: ...
 
 
+logger = logging.getLogger(__name__)
+
+
 def clarification_response() -> AssistantChatResponse:
     return AssistantChatResponse(
         type="answer",
@@ -31,17 +38,33 @@ def clarification_response() -> AssistantChatResponse:
     )
 
 
-def data_unavailable_response() -> AssistantChatResponse:
+def data_unavailable_response(
+    *,
+    code: str,
+    stage: Literal["tools", "provider", "planning", "data", "composition"],
+    message: str,
+    reason: str | None = None,
+) -> AssistantChatResponse:
+    logger.warning(
+        "assistant_unavailable code=%s stage=%s reason=%s",
+        code,
+        stage,
+        reason or "not_provided",
+    )
     return AssistantChatResponse(
         type="answer",
-        message="I cannot access live NBTS data for that request right now. Please try again once the assistant tools are available.",
+        message=message,
+        unavailableCode=code,
+        unavailableStage=stage,
+        retryable=True,
     )
 
 
 def _tool_summary(tools: list[AssistantToolDescriptor]) -> str:
     return "\n".join(
         f"- {tool.name}: {tool.description} "
-        f"(permission: {tool.requiredPermission or 'authenticated'}, mutates: {tool.mutates})"
+        f"(permission: {tool.requiredPermission or 'authenticated'}, mutates: {tool.mutates}, "
+        f"input: {json.dumps(tool.inputSchema, default=str)})"
         for tool in tools
     )
 
@@ -54,16 +77,24 @@ def _system_prompt(
     filters = request.context.filters if request.context else {}
     return (
         "You are the NBTS operational assistant. Answer naturally and specifically.\n"
+        "Answer in Swahili when the user's current message is Swahili; otherwise answer in English.\n"
+        "Keep canonical record codes and identifiers unchanged when translating explanations.\n"
         "Use the listed API tools when live NBTS data, navigation, or action proposals are needed.\n"
         "Never claim an action was executed unless a tool result says so.\n"
         "Mutations and sends must be returned as action proposals only; the web UI confirms them.\n"
-        "Return JSON only. Allowed final shapes:\n"
+        "For a data question, first request up to six read tools in one JSON object.\n"
+        "Use a unique sourceId for each tool call and never include mutating tools in a tool_calls array.\n"
+        'Format: {"tool_calls":[{"sourceId":"source_inventory","name":"tool.name","arguments":{}}]}\n'
+        "For a mutation or navigation, request exactly one tool_call so the API can preserve its confirmation flow.\n"
+        "Return JSON only. Allowed non-data final shapes:\n"
         '{"type":"answer","message":"..."}\n'
         '{"type":"navigation","message":"...","path":"/...","requiredPermission":"..."}\n'
         '{"type":"permission_denied","message":"...","requiredPermission":"..."}\n'
         '{"type":"action_proposal","message":"...","proposal":{...}}\n'
         "To request one tool call, return:\n"
         '{"tool_call":{"name":"tool.name","arguments":{}}}\n'
+        "Tool arguments contain only that tool's input fields; never nest tool_call or tool_calls inside arguments.\n"
+        f"Today's date: {date.today().isoformat()}. Resolve relative periods (today, this month, last 30 days) from this date.\n"
         f"Current path: {path or '/'}\n"
         f"Current filters: {json.dumps(filters, default=str)}\n"
         f"User permissions: {', '.join(request.permissions) or 'none'}\n"
@@ -71,15 +102,87 @@ def _system_prompt(
     )
 
 
+def _composition_prompt(
+    request: AssistantChatRequest,
+    sources: list[dict[str, Any]],
+    *,
+    repair: str | None = None,
+) -> str:
+    repair_text = f"\nThe previous composition was invalid: {repair}. Return a corrected object.\n" if repair else ""
+    return (
+        "Compose the final response from the supplied API source results. Return JSON only with type composed_answer.\n"
+        "Required shape: {\"type\":\"composed_answer\",\"message\":\"short status\","
+        "\"sources\":[{\"sourceId\":\"source_x\",\"tool\":\"tool.name\",\"arguments\":{}}],"
+        "\"composition\":{\"title\":\"...\",\"summary\":\"...\",\"language\":\"en|sw\","
+        "\"sections\":[{\"id\":\"overview\",\"layout\":\"stack|grid|columns\",\"blocks\":[...]}],"
+        "\"suggestions\":[]}}.\n"
+        "Safe block types are narrative, metrics, comparison, table, chart, ranked_list, status_summary, timeline, notice, recommendation.\n"
+        "Every block needs type, id (lowercase letters, digits, _ or -, starting with a letter) and width (full, half, third, or two-thirds).\n"
+        "Section ids follow the same lowercase id rule.\n"
+        "Required fields per block type:\n"
+        "- narrative: content, sourceIds\n"
+        "- metrics: items:[{label,binding:{sourceId,path,operation,field?}}]. Operations: value,count,sum,average,minimum,maximum.\n"
+        "- comparison: title, label, current binding, previous binding, mode (difference or percent_change)\n"
+        "- table: title, sourceId, path, columns:[{key,label}], limit, optional sort:{key,direction}\n"
+        "- chart: title, sourceId, path, chartType (line,bar,stacked_bar,area,pie,donut), xKey, series:[{key,label}]\n"
+        "- ranked_list: title, sourceId, path, labelKey, valueKey, limit, direction\n"
+        "- status_summary: title, sourceId, path, labelKey, valueKey\n"
+        "- timeline: title, sourceId, path, dateKey, titleKey, detailKey, limit\n"
+        "- notice and recommendation: tone (info,warning,error,success), message, sourceIds\n"
+        "Do not copy operational numeric values into the layout. Bind all metrics, table cells, chart points, comparisons and list values to sources.\n"
+        "Do not output HTML, CSS, scripts, URLs, phone numbers, email addresses, passwords, tokens, or contact fields.\n"
+        "Use only paths and field names visible in the source samples. Keep sourceId/tool/arguments identical to the executed query plan.\n"
+        "For fields inside nested objects use dot paths, for example donor.firstName or bloodGroup.name.\n"
+        f"User request: {request.message}\n"
+        f"Sources: {json.dumps(sources, default=str, ensure_ascii=False)}"
+        f"{repair_text}"
+    )
+
+
+def _composition_messages(
+    request: AssistantChatRequest,
+    sources: list[dict[str, Any]],
+    *,
+    repair: str | None = None,
+) -> list[ChatMessage]:
+    # Ollama returns done_reason=load with empty content when the chat has no user turn.
+    user_message = request.message.strip() or "Compose the layout from the supplied sources."
+    return [
+        ChatMessage(role="system", content=_composition_prompt(request, sources, repair=repair)),
+        ChatMessage(role="user", content=user_message),
+    ]
+
+
+def _compact_result(value: Any, *, depth: int = 0) -> Any:
+    if depth >= 5:
+        return "[nested data omitted]"
+    if isinstance(value, list):
+        return [_compact_result(item, depth=depth + 1) for item in value[:40]]
+    if isinstance(value, dict):
+        return {
+            key: _compact_result(item, depth=depth + 1)
+            for key, item in list(value.items())[:60]
+            if not re.search(r"phone|email|password|secret|token|hash|contact", key, flags=re.IGNORECASE)
+        }
+    return value
+
+
 def _parse_json_object(content: str) -> dict[str, Any]:
+    text = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", content or "")
     try:
-        parsed = json.loads(content)
+        parsed = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise AiServiceError(
-            code="CHAT_INVALID_LLM_RESPONSE",
-            message="The assistant model returned invalid JSON.",
-            status_code=502,
-        ) from exc
+        start = text.find("{")
+        try:
+            if start < 0:
+                raise exc
+            parsed, _ = json.JSONDecoder().raw_decode(text, start)
+        except json.JSONDecodeError:
+            raise AiServiceError(
+                code="CHAT_INVALID_LLM_RESPONSE",
+                message="The assistant model returned invalid JSON.",
+                status_code=502,
+            ) from exc
     if not isinstance(parsed, dict):
         raise AiServiceError(
             code="CHAT_INVALID_LLM_RESPONSE",
@@ -89,13 +192,319 @@ def _parse_json_object(content: str) -> dict[str, Any]:
     return parsed
 
 
+_RETRYABLE_PLANNING_CODES = {"LLM_INVALID_RESPONSE", "CHAT_INVALID_LLM_RESPONSE", "LLM_PROVIDER_ERROR"}
+
+
+def _is_retryable_planning_error(error: AiServiceError) -> bool:
+    if error.code not in _RETRYABLE_PLANNING_CODES:
+        return False
+    # A provider timeout already spent the full budget; retrying would exceed the API timeout.
+    return not (error.code == "LLM_PROVIDER_ERROR" and error.status_code == 504)
+
+
+def _unwrap_nested_plan(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Lift a plan the model wrapped inside a single tool call's arguments."""
+    single = parsed.get("tool_call")
+    arguments = single.get("arguments") if isinstance(single, dict) else None
+    if not isinstance(arguments, dict):
+        return parsed
+    nested_calls = arguments.get("tool_calls")
+    if isinstance(nested_calls, list) and nested_calls:
+        return {"tool_calls": nested_calls}
+    nested_call = arguments.get("tool_call")
+    if isinstance(nested_call, dict):
+        return {"tool_call": nested_call}
+    inner_name = arguments.get("name")
+    inner_arguments = arguments.get("arguments")
+    if isinstance(inner_name, str) and inner_name.strip() and isinstance(inner_arguments, dict):
+        return {"tool_call": {"name": inner_name.strip(), "arguments": inner_arguments}}
+    return parsed
+
+
+def _normalize_tool_name(raw: Any, known: set[str] | None = None) -> str:
+    name = raw.strip() if isinstance(raw, str) else ""
+    # gpt-oss may prefix tool names with a namespace such as "functions." or "tool.".
+    name = name.removeprefix("functions.")
+    if not known or name in known:
+        return name
+    parts = name.split(".")
+    for start in range(1, len(parts)):
+        candidate = ".".join(parts[start:])
+        if candidate in known:
+            return candidate
+    return name
+
+
+def _normalize_source_id(raw: Any, index: int, seen: set[str]) -> str:
+    candidate = re.sub(r"[^a-z0-9_]+", "_", raw.strip().lower()).strip("_") if isinstance(raw, str) else ""
+    if candidate and not candidate.startswith("source_"):
+        candidate = f"source_{candidate}"
+    if not candidate or len(candidate) > 64 or candidate in seen:
+        candidate = f"source_{index + 1}"
+    suffix = index + 1
+    while candidate in seen:
+        suffix += 1
+        candidate = f"source_{suffix}"
+    return candidate
+
+
+def _plan_request(
+    llm: LlmProvider,
+    messages: list[ChatMessage],
+) -> dict[str, Any]:
+    try:
+        return _unwrap_nested_plan(_parse_json_object(llm.complete(messages).content))
+    except AiServiceError as first_error:
+        if not _is_retryable_planning_error(first_error):
+            raise
+        logger.warning(
+            "assistant_planning_retry code=%s reason=%s",
+            first_error.code,
+            first_error.message[:300],
+        )
+        return _unwrap_nested_plan(_parse_json_object(llm.complete(messages).content))
+
+
+def _is_model_still_loading(error: Exception) -> bool:
+    return (
+        isinstance(error, AiServiceError)
+        and error.code == "LLM_INVALID_RESPONSE"
+        and "done_reason=load" in error.message
+    )
+
+
+def _safe_validation_summary(error: Exception) -> str:
+    if isinstance(error, AiServiceError):
+        return f"{error.code}: {error.message[:240]}"
+    if isinstance(error, ValidationError):
+        parts: list[str] = []
+        for item in error.errors(include_input=False)[:5]:
+            location = ".".join(str(part) for part in item.get("loc", ())) or "response"
+            message = str(item.get("msg", "invalid value"))
+            parts.append(f"{location}: {message}")
+        return "; ".join(parts) or "validation_error"
+    if isinstance(error, LayoutDataError):
+        return str(error)[:240]
+    return type(error).__name__
+
+
+class LayoutDataError(ValueError):
+    """A layout that binds to data paths the executed sources do not contain."""
+
+
+_MISSING = object()
+_OMITTED = "[nested data omitted]"
+
+
+def _at_path(value: Any, path: str) -> Any:
+    # Mirrors atPath in api/src/modules/assistant/composition.ts.
+    current = value
+    for part in [segment for segment in (path or "").split(".") if segment]:
+        if current == _OMITTED:
+            return current
+        if isinstance(current, list) and part.isdigit():
+            index = int(part)
+            if index >= len(current):
+                return _MISSING
+            current = current[index]
+            continue
+        if not isinstance(current, dict) or part not in current:
+            return _MISSING
+        current = current[part]
+    return current
+
+
+def _key_names(record: dict[str, Any]) -> str:
+    top = list(record.keys())[:15]
+    nested = [
+        f"{key}.{child}"
+        for key in top
+        if isinstance(record.get(key), dict)
+        for child in list(record[key].keys())[:6]
+    ]
+    return ", ".join([*top, *nested[:15]])
+
+
+def _keys_hint(value: Any) -> str:
+    if isinstance(value, dict):
+        return "keys " + _key_names(value)
+    if isinstance(value, list) and value and isinstance(value[0], dict):
+        return "list items with keys " + _key_names(value[0])
+    return "no nested keys"
+
+
+def _nested_key(sample: dict[str, Any], key: Any) -> Any:
+    """Return the single nested dot path for a key missing at the top level, else the key unchanged."""
+    if not isinstance(key, str) or not key or _at_path(sample, key) is not _MISSING:
+        return key
+    matches = [
+        f"{parent}.{key}"
+        for parent, child in sample.items()
+        if isinstance(child, dict) and _at_path(child, key) is not _MISSING
+    ]
+    return matches[0] if len(matches) == 1 else key
+
+
+_ITEM_KEY_FIELDS = ("xKey", "labelKey", "valueKey", "dateKey", "titleKey", "detailKey")
+
+
+def _resolve_nested_keys(candidate: dict[str, Any], executed: list[dict[str, Any]]) -> None:
+    results = {
+        str(source.get("sourceId")): source.get("result")
+        for source in executed
+        if source.get("status") == "ok"
+    }
+
+    def sample_at(source_id: Any, path: Any) -> dict[str, Any] | None:
+        if source_id not in results:
+            return None
+        items = _at_path(results[source_id], path if isinstance(path, str) else "")
+        first = items[0] if isinstance(items, list) and items else None
+        return first if isinstance(first, dict) else None
+
+    composition = candidate.get("composition")
+    sections = composition.get("sections") if isinstance(composition, dict) else None
+    for section in sections if isinstance(sections, list) else []:
+        blocks = section.get("blocks") if isinstance(section, dict) else None
+        for block in blocks if isinstance(blocks, list) else []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "metrics":
+                for item in block.get("items") or []:
+                    binding = item.get("binding") if isinstance(item, dict) else None
+                    if not isinstance(binding, dict) or not binding.get("field"):
+                        continue
+                    sample = sample_at(binding.get("sourceId"), binding.get("path"))
+                    if sample is not None:
+                        binding["field"] = _nested_key(sample, binding.get("field"))
+                continue
+            sample = sample_at(block.get("sourceId"), block.get("path"))
+            if sample is None:
+                continue
+            for field in _ITEM_KEY_FIELDS:
+                if field in block:
+                    block[field] = _nested_key(sample, block.get(field))
+            for entry in [*(block.get("columns") or []), *(block.get("series") or []), block.get("sort")]:
+                if isinstance(entry, dict) and "key" in entry:
+                    entry["key"] = _nested_key(sample, entry.get("key"))
+
+
+def _block_data_errors(block: Any, results: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+
+    def check_binding(binding: Any) -> None:
+        source_id = getattr(binding, "sourceId", "")
+        if source_id not in results:
+            errors.append(f'binding source "{source_id}" was not executed')
+            return
+        value = _at_path(results[source_id], getattr(binding, "path", ""))
+        if value is _MISSING:
+            errors.append(f'path "{binding.path}" not in {source_id} ({_keys_hint(results[source_id])})')
+            return
+        field = getattr(binding, "field", None)
+        if binding.operation in {"sum", "average", "minimum", "maximum"}:
+            if value != _OMITTED and not isinstance(value, list):
+                errors.append(f'{binding.operation} on "{binding.path}" in {source_id} needs a list')
+            elif field and isinstance(value, list) and value and isinstance(value[0], dict) and _at_path(value[0], field) is _MISSING:
+                errors.append(f'field "{field}" not in {source_id}.{binding.path} items ({_keys_hint(value)})')
+
+    block_type = getattr(block, "type", "")
+    if block_type == "metrics":
+        for item in block.items:
+            check_binding(item.binding)
+        return errors
+    if block_type == "comparison":
+        check_binding(block.current)
+        check_binding(block.previous)
+        return errors
+    source_id = getattr(block, "sourceId", None)
+    if source_id is None:
+        return errors
+    if source_id not in results:
+        return [f'block source "{source_id}" was not executed']
+    items = _at_path(results[source_id], block.path)
+    if items is _MISSING or (items != _OMITTED and not isinstance(items, list)):
+        return [f'path "{block.path}" in {source_id} is not a list ({_keys_hint(results[source_id])})']
+    keys: list[str] = []
+    if block_type == "table":
+        keys = [column.key for column in block.columns] + ([block.sort.key] if block.sort else [])
+    elif block_type == "chart":
+        keys = [block.xKey, *[series.key for series in block.series]]
+    elif block_type in {"ranked_list", "status_summary"}:
+        keys = [block.labelKey, block.valueKey]
+    elif block_type == "timeline":
+        keys = [block.dateKey, block.titleKey, *([block.detailKey] if block.detailKey else [])]
+    sample = items[0] if isinstance(items, list) and items else None
+    if isinstance(sample, dict):
+        for key in keys:
+            if _at_path(sample, key) is _MISSING:
+                errors.append(f'key "{key}" not in {source_id}.{block.path or "(root)"} items ({_keys_hint(items)})')
+    return errors
+
+
+def _layout_data_errors(
+    response: AssistantChatResponse,
+    executed: list[dict[str, Any]],
+) -> dict[tuple[int, int], list[str]]:
+    if response.composition is None:
+        return {}
+    results = {
+        str(source.get("sourceId")): source.get("result")
+        for source in executed
+        if source.get("status") == "ok"
+    }
+    failed = {str(source.get("sourceId")) for source in executed if source.get("status") == "error"}
+    problems: dict[tuple[int, int], list[str]] = {}
+    for section_index, section in enumerate(response.composition.sections):
+        for block_index, block in enumerate(section.blocks):
+            referenced = getattr(block, "sourceIds", None) or [getattr(block, "sourceId", "")]
+            if any(source_id in failed for source_id in referenced):
+                continue
+            errors = _block_data_errors(block, results)
+            if errors:
+                problems[(section_index, block_index)] = errors
+    return problems
+
+
+def _describe_layout_errors(problems: dict[tuple[int, int], list[str]]) -> str:
+    parts = [
+        f"sections.{section}.blocks.{block}: {'; '.join(errors)}"
+        for (section, block), errors in list(problems.items())[:4]
+    ]
+    return "layout references unavailable data: " + " | ".join(parts)
+
+
+def _validated_composition(
+    candidate: dict[str, Any],
+    executed: list[dict[str, Any]],
+    *,
+    prune: bool,
+) -> AssistantChatResponse:
+    _resolve_nested_keys(candidate, executed)
+    response = AssistantChatResponse.model_validate(candidate)
+    problems = _layout_data_errors(response, executed)
+    if not problems:
+        return response
+    if not prune or response.composition is None:
+        raise LayoutDataError(_describe_layout_errors(problems))
+    sections = []
+    for section_index, section in enumerate(response.composition.sections):
+        blocks = [block for block_index, block in enumerate(section.blocks) if (section_index, block_index) not in problems]
+        if blocks:
+            sections.append(section.model_copy(update={"blocks": blocks}))
+    if not sections:
+        raise LayoutDataError(_describe_layout_errors(problems))
+    logger.warning("assistant_layout_pruned %s", _describe_layout_errors(problems)[:500])
+    return response.model_copy(update={"composition": response.composition.model_copy(update={"sections": sections})})
+
+
 def _blood_group(message: str) -> str | None:
     match = re.search(r"(^|[^A-Za-z0-9])((?:AB|A|B|O)[+-])(?=$|[^A-Za-z0-9])", message.upper())
     return match.group(2) if match else None
 
 
 def _horizon_days(message: str) -> int:
-    match = re.search(r"\b(7|14|30)\s*(day|days)?\b", message, flags=re.IGNORECASE)
+    match = re.search(r"\b(7|14|30|60)\s*(day|days|siku)?\b", message, flags=re.IGNORECASE)
     return int(match.group(1)) if match else 7
 
 
@@ -325,7 +734,7 @@ def _heuristic_tool_response(
             "dashboard": "/dashboard",
             "facility": "/admin/facilities",
             "facilities": "/admin/facilities",
-            "alert": "/inventory",
+            "alert": "/alerts",
             "donor": "/donors",
             "donation": "/donations",
             "inventory": "/inventory",
@@ -345,22 +754,16 @@ def _heuristic_tool_response(
                     "navigation.propose",
                 )
 
-    if any(word in message for word in ["forecast", "prediction"]) and any(
-        word in message for word in ["run", "create", "generate"]
+    if any(word in message for word in ["forecast", "prediction", "analysis", "utabiri", "uchambuzi"]) and any(
+        word in message for word in ["run", "create", "generate", "tengeneza", "endesha"]
     ):
-        blood_group = _blood_group(request.message)
-        if not blood_group:
-            return AssistantChatResponse(
-                type="answer",
-                message="Which blood group should I run the forecast for? Include a value like O+ or AB-.",
-            )
-        if "predictions.propose_run" in available:
+        if "ai_analysis.propose_run" in available:
             return _response_from_tool_result(
                 client.call_tool(
-                    "predictions.propose_run",
-                    {"bloodGroup": blood_group, "horizonDays": _horizon_days(request.message)},
+                    "ai_analysis.propose_run",
+                    {"horizonDays": _horizon_days(request.message), "notificationMode": "REPORT_ONLY"},
                 ),
-                "predictions.propose_run",
+                "ai_analysis.propose_run",
             )
 
     if "donor" in message and "donors.search" in available:
@@ -423,20 +826,34 @@ def run_chat(
     )
     try:
         tools = client.list_tools()
-    except AiServiceError:
-        return data_unavailable_response()
-
-    if _is_system_report_request(request.message):
-        try:
-            return _system_report_response(client, tools)
-        except AiServiceError:
-            return data_unavailable_response()
+    except AiServiceError as exc:
+        return data_unavailable_response(
+            code=exc.code,
+            stage="tools",
+            message="The assistant cannot connect to the NBTS data tools. Check the API service and API_INTERNAL_BASE_URL, then try again.",
+            reason=exc.code,
+        )
 
     try:
         llm = provider or get_llm_provider(cfg)
-    except AiServiceError:
-        heuristic = _heuristic_tool_response(request, client, tools) if tools else None
-        return heuristic or clarification_response()
+    except AiServiceError as exc:
+        control_text = request.message.lower()
+        if re.search(r"\b(open|go to|navigate)\b", control_text) or (
+            re.search(r"\b(run|create|generate|tengeneza|endesha)\b", control_text)
+            and re.search(r"\b(forecast|prediction|analysis|utabiri|uchambuzi)\b", control_text)
+        ):
+            try:
+                control = _heuristic_tool_response(request, client, tools)
+                if control and control.type in {"navigation", "action_proposal"}:
+                    return control
+            except AiServiceError:
+                pass
+        return data_unavailable_response(
+            code=exc.code,
+            stage="provider",
+            message="The AI model provider is unavailable or not configured. Check the configured provider credentials and endpoint, then try again.",
+            reason=exc.code,
+        )
 
     try:
         history = [
@@ -444,60 +861,150 @@ def run_chat(
             for item in request.history[-10:]
             if item.get("role") in {"user", "assistant"} and item.get("content")
         ]
-        first = llm.complete(
-            [ChatMessage(role="system", content=_system_prompt(request, tools)), *history, ChatMessage(role="user", content=request.message)]
+        parsed = _plan_request(
+            llm,
+            [ChatMessage(role="system", content=_system_prompt(request, tools)), *history, ChatMessage(role="user", content=request.message)],
         )
-        parsed = _parse_json_object(first.content)
-    except AiServiceError:
-        return clarification_response()
+    except AiServiceError as exc:
+        return data_unavailable_response(
+            code=exc.code,
+            stage="planning",
+            message="The AI model could not create a valid data-query plan. Please retry the request.",
+            reason=exc.message,
+        )
 
-    tool_call = parsed.get("tool_call")
-    if isinstance(tool_call, dict):
-        name = tool_call.get("name")
-        arguments = tool_call.get("arguments", {})
-        if not isinstance(name, str) or not isinstance(arguments, dict):
-            return clarification_response()
-        if name not in {tool.name for tool in tools}:
-            return data_unavailable_response()
-        try:
-            tool_result = client.call_tool(name, arguments)
-        except AiServiceError as exc:
-            if exc.code == "FORBIDDEN":
-                return AssistantChatResponse(
-                    type="permission_denied",
-                    message=exc.message,
-                    requiredPermission="unknown",
-                )
-            return data_unavailable_response()
+    raw_calls = parsed.get("tool_calls")
+    if not isinstance(raw_calls, list):
+        single = parsed.get("tool_call")
+        raw_calls = [single] if isinstance(single, dict) else []
 
-        if isinstance(tool_result, dict) and (
-            "proposal" in tool_result or tool_result.get("type") == "navigation"
-        ):
-            return _response_from_tool_result(tool_result, name)
-
-        try:
-            second = llm.complete(
-                [
-                    ChatMessage(role="system", content=_system_prompt(request, tools)),
-                    ChatMessage(role="user", content=request.message),
-                    ChatMessage(
-                        role="assistant",
-                        content=json.dumps({"tool_call": tool_call}, default=str),
-                    ),
-                    ChatMessage(
-                        role="user",
-                        content=(
-                            "Tool result JSON. Produce one final allowed JSON response: "
-                            f"{json.dumps(tool_result, default=str)[:8000]}"
-                        ),
-                    ),
-                ]
+    if raw_calls:
+        if len(raw_calls) > 6:
+            return data_unavailable_response(
+                code="ASSISTANT_TOOL_LIMIT_EXCEEDED",
+                stage="planning",
+                message="The AI requested too many data sources. Please narrow the question or try again.",
             )
-            return AssistantChatResponse.model_validate(_parse_json_object(second.content))
-        except (AiServiceError, ValueError):
-            return AssistantChatResponse(type="answer", message=_format_tool_result(name, tool_result))
+        descriptors = {tool.name: tool for tool in tools}
+        executed: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for index, raw_call in enumerate(raw_calls):
+            if not isinstance(raw_call, dict):
+                return data_unavailable_response(
+                    code="ASSISTANT_TOOL_PLAN_INVALID",
+                    stage="planning",
+                    message="The AI generated an invalid data-query plan. Please retry the request.",
+                )
+            name = _normalize_tool_name(raw_call.get("name"), set(descriptors))
+            arguments = raw_call.get("arguments") or {}
+            source_id = _normalize_source_id(raw_call.get("sourceId"), index, seen_ids)
+            descriptor = descriptors.get(name)
+            if descriptor is None or not isinstance(arguments, dict):
+                reason = f"unknown tool {name!r}" if descriptor is None else f"arguments for {name!r} are not an object"
+                return data_unavailable_response(
+                    code="ASSISTANT_TOOL_PLAN_INVALID",
+                    stage="planning",
+                    message="The AI generated an invalid data-query plan. Please retry the request.",
+                    reason=reason,
+                )
+            seen_ids.add(source_id)
+            if descriptor.mutates and len(raw_calls) != 1:
+                return data_unavailable_response(
+                    code="ASSISTANT_TOOL_PLAN_INVALID",
+                    stage="planning",
+                    message="The AI combined a confirmation action with data queries. Please ask for the action on its own.",
+                    reason=f"mutating tool {name!r} in a {len(raw_calls)}-call plan",
+                )
+            try:
+                result = client.call_tool(name, arguments)
+            except AiServiceError as exc:
+                if exc.code == "FORBIDDEN":
+                    return AssistantChatResponse(type="permission_denied", message=exc.message, requiredPermission=descriptor.requiredPermission or "unknown")
+                executed.append({
+                    "sourceId": source_id,
+                    "tool": name,
+                    "arguments": arguments,
+                    "status": "error",
+                    "errorCode": exc.code,
+                    "error": exc.message,
+                })
+                continue
+            if descriptor.mutates or (isinstance(result, dict) and ("proposal" in result or result.get("type") == "navigation")):
+                return _response_from_tool_result(result, name)
+            executed.append({"sourceId": source_id, "tool": name, "arguments": arguments, "status": "ok", "result": _compact_result(result)})
+
+        if not any(source.get("status") == "ok" for source in executed):
+            failure_codes = sorted({
+                str(source.get("errorCode"))
+                for source in executed
+                if source.get("status") == "error" and source.get("errorCode")
+            })
+            source_code = failure_codes[0] if len(failure_codes) == 1 else "ASSISTANT_DATA_SOURCES_FAILED"
+            validation_details = sorted({
+                str(source.get("error"))[:300]
+                for source in executed
+                if source.get("status") == "error"
+                and source.get("errorCode") == "VALIDATION_ERROR"
+                and source.get("error")
+            })
+            message = "The selected NBTS data sources could not be loaded. Check database availability and the API logs, then try again."
+            if source_code == "VALIDATION_ERROR" and validation_details:
+                message = f"The AI selected an invalid data filter: {validation_details[0]} Please retry or rephrase the request."
+            return data_unavailable_response(
+                code=source_code,
+                stage="data",
+                message=message,
+                reason=",".join(failure_codes) if failure_codes else "no_successful_sources",
+            )
+
+        plan_sources = [
+            {"sourceId": source["sourceId"], "tool": source["tool"], "arguments": source["arguments"]}
+            for source in executed
+        ]
+        first_candidate: dict[str, Any] | None = None
+        try:
+            completion = llm.complete(_composition_messages(request, executed))
+            candidate = _parse_json_object(completion.content)
+            candidate["sources"] = plan_sources
+            first_candidate = candidate
+            return _validated_composition(candidate, executed, prune=False)
+        except (AiServiceError, ValueError, IndexError) as first_error:
+            if _is_model_still_loading(first_error):
+                return data_unavailable_response(
+                    code=first_error.code,
+                    stage="composition",
+                    message="The AI model is still loading. Please retry the request in a moment.",
+                    reason=first_error.message,
+                )
+            try:
+                repair = llm.complete(_composition_messages(
+                    request,
+                    executed,
+                    repair=str(first_error)[:500],
+                ))
+                candidate = _parse_json_object(repair.content)
+                candidate["sources"] = plan_sources
+                return _validated_composition(candidate, executed, prune=True)
+            except (AiServiceError, ValueError, IndexError) as repair_error:
+                if first_candidate is not None:
+                    try:
+                        return _validated_composition(first_candidate, executed, prune=True)
+                    except (ValueError, IndexError):
+                        pass
+                validation_summary = _safe_validation_summary(repair_error)
+                return data_unavailable_response(
+                    code="ASSISTANT_LAYOUT_INVALID",
+                    stage="composition",
+                    message=f"The AI returned an invalid layout after one repair attempt: {validation_summary}. Please retry or rephrase the request.",
+                    reason=validation_summary,
+                )
 
     try:
         return AssistantChatResponse.model_validate(parsed)
-    except ValueError:
-        return clarification_response()
+    except ValueError as exc:
+        return data_unavailable_response(
+            code="ASSISTANT_RESPONSE_INVALID",
+            stage="planning",
+            message="The AI returned an unsupported response. Please retry the request.",
+            reason=type(exc).__name__,
+        )

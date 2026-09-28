@@ -95,7 +95,7 @@ describe('createRequirePermission', () => {
   test('returns 403 when a required permission is missing', async () => {
     const loadAccess = createAccessMock({
       roles: ['Authorized Manager'],
-      permissions: ['reports:read', 'predictions:read'],
+      permissions: ['reports:read', 'alerts:read'],
     })
     const app = buildApp({
       user: activeUser,

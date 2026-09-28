@@ -269,7 +269,7 @@ function renderSection<T>(
         title="Report restricted"
         message={
           section.message ||
-          "reports:read is required for this section."
+          "You do not have permission to view this report."
         }
       />
     );
@@ -305,7 +305,7 @@ export default function ReportsPage() {
           title="Reports access denied"
           message={
             data.message ||
-            "Your account needs reports:read to view this page."
+            "You do not have permission to view reports. Contact an administrator if you need access."
           }
         />
       </div>

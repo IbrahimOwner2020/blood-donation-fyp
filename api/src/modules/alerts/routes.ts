@@ -6,7 +6,6 @@
  * - GET list / :id → alerts:read
  * - GET /:id/matches → alerts:read + donors:read (on-demand matching)
  * - PATCH /:id/status → alerts:update
- * - POST /recalculate → alerts:update
  */
 
 import { Hono } from 'hono'
@@ -24,13 +23,11 @@ import {
   listAlertMatchesQuerySchema,
   listAlertsQuerySchema,
   patchAlertStatusBodySchema,
-  recalculateAlertsBodySchema,
 } from './schemas'
 import {
   getAlertById,
   listAlerts,
   patchAlertStatus,
-  recalculateAlerts,
 } from './service'
 
 export { AlertAuditActions }
@@ -66,47 +63,6 @@ alertRoutes.get('/', requirePermission('alerts:read'), async (c) => {
     offset: result.offset,
   })
 })
-
-/**
- * POST /alerts/recalculate
- * Body: predictionId? | bloodGroupId? | bloodGroup?, facilityId?
- * Must be registered before /:id.
- */
-alertRoutes.post(
-  '/recalculate',
-  requirePermission('alerts:update'),
-  async (c) => {
-    const body = await parseJsonBody(c, recalculateAlertsBodySchema)
-    const actor = c.get('user')
-    const result = await recalculateAlerts(getDb(), body)
-
-    await recordActivity({
-      actorUserId: actor?.id ?? null,
-      action: AlertAuditActions.RECALCULATE,
-      entityType: 'shortage_alert',
-      entityId: null,
-      metadata: {
-        predictionId: body.predictionId ?? null,
-        bloodGroupId: body.bloodGroupId ?? null,
-        bloodGroup: body.bloodGroup ?? null,
-        facilityId: body.facilityId ?? null,
-        resultCount: result.results?.length ?? 0,
-        created: (result.results ?? []).filter((r) => r.action === 'created')
-          .length,
-        updated: (result.results ?? []).filter((r) => r.action === 'updated')
-          .length,
-        resolved: (result.results ?? []).filter((r) => r.action === 'resolved')
-          .length,
-      },
-      requestId: c.get('requestId') ?? null,
-      ipAddress: clientIp(c),
-    })
-
-    return jsonOk(c, {
-      results: result.results,
-    })
-  },
-)
 
 /**
  * GET /alerts/:id/matches

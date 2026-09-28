@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 
 import { getEnv } from './lib/env'
+import { getDb } from './db/client'
 import { jsonOk } from './lib/response'
 import type { AppHonoEnv } from './lib/types'
 import {
@@ -11,12 +12,15 @@ import {
     requestLoggerMiddleware,
 } from './middleware'
 import { activityLogRoutes } from './modules/activity-logs'
+import { aiAnalysisRoutes } from './modules/ai-analysis'
+import { alertRoutes } from './modules/alerts'
 import { assistantRoutes } from './modules/assistant'
 import { authRoutes } from './modules/auth'
 import { bloodRequestRoutes } from './modules/blood-requests'
 import { donationCentreRoutes } from './modules/donation-centres'
 import { donationRoutes } from './modules/donations'
 import { donorRoutes } from './modules/donors'
+import { dashboardRoutes } from './modules/dashboard'
 import { facilitiesRoutes } from './modules/facilities'
 import { inventoryRoutes } from './modules/inventory'
 import { inventoryAlertRoutes } from './modules/inventory-alerts'
@@ -50,6 +54,26 @@ app.get('/health', (c) => {
     })
 })
 
+app.get('/ready', async (c) => {
+    try {
+        await getDb().$client.query('SELECT 1')
+        return jsonOk(c, {
+            service: 'api',
+            status: 'ready',
+            checks: { database: 'ok' },
+        })
+    } catch {
+        return c.json({
+            data: {
+                service: 'api',
+                status: 'not_ready',
+                checks: { database: 'unavailable' },
+            },
+            error: null,
+        }, 503)
+    }
+})
+
 /** Versioned API mount — domain modules register here later. */
 const v1 = new Hono<AppHonoEnv>()
 
@@ -80,6 +104,7 @@ v1.route('/donations', donationRoutes)
 /** Inventory list/summary/expiry + status PATCH — owned by inventory-api. */
 v1.route('/inventory', inventoryRoutes)
 v1.route('/inventory-alerts', inventoryAlertRoutes)
+v1.route('/alerts', alertRoutes)
 /** Healthcare facilities — owned by facilities-api (do not collide with other domain mounts). */
 v1.route('/facilities', facilitiesRoutes)
 /** Blood requests + status machine — owned by blood-requests-api (demand_records is separate). */
@@ -88,6 +113,8 @@ v1.route('/blood-requests', bloodRequestRoutes)
 v1.route('/notifications', notificationRoutes)
 /** Operational reports — owned by reports-api-web (not /dashboard/*). */
 v1.route('/reports', reportRoutes)
+v1.route('/dashboard', dashboardRoutes)
+v1.route('/ai-analysis', aiAnalysisRoutes)
 /** Permissioned app assistant — proposes then confirms API-owned actions. */
 v1.route('/assistant', assistantRoutes)
 

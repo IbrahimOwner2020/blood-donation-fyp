@@ -168,10 +168,11 @@ make config
 
 | Role | Email | Password (placeholder) |
 | --- | --- | --- |
-| System Administrator | `admin@nbts.local` | `ChangeMe-Admin-Local-Only!` |
-| NBTS Blood Bank Officer | `officer@nbts.local` | `ChangeMe-Officer-Local-Only!` |
+| Administrator | `admin@nbts.local` | `ChangeMe-Admin-Local-Only!` |
+| Manager | `manager@nbts.local` | `ChangeMe-Manager-Local-Only!` |
+| Blood Bank Staff | `officer@nbts.local` | `ChangeMe-Officer-Local-Only!` |
 
-Seeded when `SEED_DEMO_USERS=true`. Override via `DEMO_ADMIN_*` / `DEMO_OFFICER_*`. **Do not use outside local/dev.**
+Seeded when `SEED_DEMO_USERS=true`. Override via `DEMO_ADMIN_*` / `DEMO_MANAGER_*` / `DEMO_OFFICER_*`. **Do not use outside local/dev.**
 
 ## Host-side tests (stack optional)
 

@@ -8,59 +8,42 @@ Recommended approach:
 - secure HTTP-only session cookie;
 - server-side session validation.
 
-Local development: `cd api && bun run db:seed` creates idempotent demo users (System Administrator + NBTS Blood Bank Officer) with Argon2id hashes. Credentials are placeholders in root `.env.example` / README — **local only**, never production secrets.
+Local development: `cd api && bun run db:seed` creates idempotent demo users (Administrator, Manager, Blood Bank Staff) with Argon2id hashes. Credentials are placeholders in root `.env.example` / README — **local only**, never production secrets.
 
-Re-running `bun run db:seed` inserts any **missing** roles, permissions, and `role_permissions` rows (does not delete existing mappings). Use this after permission-map updates so existing DBs catch up.
+Re-running `bun run db:seed` inserts missing roles and permissions, **syncs** seeded `role_permissions` to `ROLE_PERMISSION_MAP` (drops stale grants), and removes the legacy `requests:update` permission. Use this after permission-map updates so existing DBs catch up.
 
 ## Roles
 
-Seeded roles:
+Seeded roles (canonical catalogue in `api/src/db/seed`):
 
-### System Administrator
+### Administrator
 - **all permissions** (super admin — every code in `PERMISSION_CODES`);
-- create facilities and facility manager accounts;
+- create facilities and staff accounts;
 - manage all users, roles, and role-permission mappings;
 - system configuration;
-- full operational access (donors, donations, inventory, requests, forecasts, alerts, notifications, reports);
+- full operational access (donors, donations, inventory, requests, alerts, notifications, reports);
 - view activity logs.
 
-### Facility Manager
-- assigned to one healthcare facility;
-- create, update, and deactivate users only for that facility;
-- assign only facility-safe roles;
-- run facility operational workflows.
+### Manager
+- national (not facility-scoped) read access to donors, donations, inventory, requests, notifications, and reports;
+- **approve** pending blood requests and **cancel** open requests (`requests:approve`);
+- read shortage alerts (`alerts:read`);
+- does **not** create requests, issue fulfilment, or update inventory.
 
-### Donor Manager
-- donor record read/create/update;
-- donation visibility;
-- reporting visibility.
+### Blood Bank Staff
+- donors, donations, inventory (including marking units issued);
+- read blood requests and **issue** approved requests (`requests:issue` → PARTIAL / FULFILLED);
+- notifications and reports;
+- does **not** approve or create blood requests;
+- does **not** see the alert monitoring page.
 
-### Blood Collector
-- donor lookup;
-- donation recording;
-- inventory visibility.
+### Hospital Staff
+- assigned to one healthcare facility (`users.facility_id`);
+- create blood requests for that facility (`requests:create`);
+- read own-facility inventory, requests, and reports;
+- does **not** approve, issue, or update inventory status.
 
-### Blood Bank Manager
-- donors, donations, inventory, requests, alerts, notifications, and reports.
-
-### Doctor
-- facility request creation/status workflows;
-- inventory visibility and usage status updates.
-
-### NBTS Blood Bank Officer
-- donors;
-- donations;
-- inventory;
-- blood requests;
-- shortage alerts;
-- notifications.
-
-### Authorized Manager
-- dashboards;
-- forecasts;
-- shortage alerts;
-- reports;
-- notification monitoring.
+Facility-scoped user administration (create users / assign facility-safe roles within one facility) uses `users:manage:facility` and `roles:assign:facility` when granted; Hospital Staff is the only facility-assignable seeded role.
 
 ## Permission Examples
 
@@ -87,10 +70,8 @@ inventory:update
 
 requests:read
 requests:create
-requests:update
-
-predictions:read
-predictions:run
+requests:approve
+requests:issue
 
 alerts:read
 alerts:update
@@ -100,6 +81,15 @@ notifications:send
 
 reports:read
 ```
+
+### Blood request status permissions
+
+| Next status | Permission |
+| --- | --- |
+| APPROVED, CANCELLED | `requests:approve` |
+| PARTIAL, FULFILLED | `requests:issue` |
+
+`PATCH /api/v1/blood-requests/:id` requires at least one of those codes, then enforces the matching code for the requested status.
 
 ## API Authorization
 
@@ -112,9 +102,9 @@ requirePermission('inventory:update')
 
 Never rely on hiding frontend buttons as authorization.
 
-Facility managers are scoped by `users.facility_id`. The API must force their created users into the actor's assigned facility and reject reads, updates, deactivation, or role assignments for users outside that facility.
+Hospital Staff accounts are scoped by `users.facility_id`. The API must force their created requests (and related reads) into the actor's assigned facility and reject cross-facility access.
 
-Admins with `roles:manage` can create custom roles and replace a role's permission mapping. Facility managers cannot create or edit roles; with `roles:assign:facility`, they can assign only roles whose permissions are within the facility-safe operational set.
+Admins with `roles:manage` can create custom roles and replace a role's permission mapping. Facility-scoped actors with `roles:assign:facility` can assign only roles whose permissions are within the facility-safe operational set (Hospital Staff).
 
 ## Security Requirements
 

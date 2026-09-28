@@ -198,8 +198,7 @@ export default function BloodRequestNewPage() {
         <PageHeader title="Create blood request" />
         <ForbiddenState
           title="Missing permission"
-          message="requests:create is required to create blood requests."
-          detail="UI gate: requests:create"
+          message="You do not have permission to create blood requests. Contact an administrator if you need access."
           action={
             <Link
               to="/blood-requests"
@@ -256,7 +255,7 @@ export default function BloodRequestNewPage() {
       {facilities.length === 0 ? (
         <EmptyState
           title="No active facilities"
-          description="An active healthcare facility is required before creating a request. Seed or create facilities via the server."
+          description="Add a healthcare facility before creating a request."
           action={
             <Link
               to="/blood-requests"
@@ -348,7 +347,7 @@ export default function BloodRequestNewPage() {
               className="rounded border border-nbts-border bg-nbts-surface px-3 py-2"
             />
             <span className="text-xs text-nbts-muted">
-              Leave blank to use the server default (now).
+              Leave blank to use the current date and time.
             </span>
           </label>
 

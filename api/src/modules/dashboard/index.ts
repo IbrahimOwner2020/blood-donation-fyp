@@ -23,24 +23,20 @@ export {
 export {
   bloodGroupCodeSchema,
   dashboardAlertsQuerySchema,
-  dashboardPredictionsQuerySchema,
   dashboardSummaryQuerySchema,
   dashboardTrendQuerySchema,
   type DashboardAlertsQuery,
-  type DashboardPredictionsQuery,
   type DashboardSummaryQuery,
   type DashboardTrendQuery,
 } from './schemas'
 export {
   getDashboardAlerts,
-  getDashboardPredictions,
   getDashboardSummary,
   getDemandTrend,
   getDonationTrend,
   getInventoryTrend,
   type DashboardAlertsResult,
   type DashboardKpis,
-  type DashboardPredictionsResult,
   type DashboardSummaryResult,
   type DashboardTrendResult,
 } from './service'

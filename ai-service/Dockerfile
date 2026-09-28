@@ -11,7 +11,6 @@ COPY app ./app
 RUN mkdir -p /app/models
 
 ENV MODEL_DIR=/app/models \
-    DEFAULT_FORECAST_HORIZON=7 \
     MIN_TRAINING_ROWS=30 \
     PATH="/app/.venv/bin:$PATH"
 

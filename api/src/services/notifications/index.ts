@@ -14,6 +14,11 @@ export {
 } from './providers/nextsms-provider'
 
 export {
+  BeemSmsProvider,
+  type BeemSmsConfig,
+} from './providers/beem-sms-provider'
+
+export {
   MockSmsProvider,
   type MockSmsProviderOptions,
   type MockSmsRecord,

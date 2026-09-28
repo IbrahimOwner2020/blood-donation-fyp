@@ -31,9 +31,9 @@ const envSchema = z.object({
     API_INTERNAL_BASE_URL: z.string().url().optional(),
     /** Shared secret for server-to-server daily AI analysis cron calls. */
     AI_ANALYSIS_CRON_SECRET: z.string().optional().default(''),
-    /** Default / forecast / models timeout (~30s per docs/14). */
+    /** AI chat request timeout. */
     AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
-    /** Training may run longer than forecast; keep separate from request timeout. */
+    /** Reserved for longer AI jobs; chat uses AI_REQUEST_TIMEOUT_MS. */
     AI_TRAIN_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
     /** Health probes should fail fast when the AI service is down. */
     AI_HEALTH_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
@@ -43,11 +43,15 @@ const envSchema = z.object({
     SMTP_USER: z.string().optional().default(''),
     SMTP_PASS: z.string().optional().default(''),
     SMTP_SECURE: booleanFromString.default(false),
-    SMS_PROVIDER: z.enum(['mock', 'nextsms']).default('mock'),
+    SMS_PROVIDER: z.enum(['mock', 'nextsms', 'beem']).default('mock'),
     NEXTSMS_BASE_URL: z.string().url().default('https://messaging-service.co.tz/api/sms/v1/text/single'),
     NEXTSMS_API_KEY: z.string().optional().default(''),
     NEXTSMS_API_SECRET: z.string().optional().default(''),
     NEXTSMS_SENDER_ID: z.string().optional().default(''),
+    BEEM_BASE_URL: z.string().url().default('https://apisms.beem.africa/v1/send'),
+    BEEM_API_KEY: z.string().optional().default(''),
+    BEEM_API_SECRET: z.string().optional().default(''),
+    BEEM_SENDER_ID: z.string().optional().default(''),
     ELIGIBILITY_REMINDER_SECRET: z.string().optional().default(''),
     COOKIE_SECURE: booleanFromString.default(false),
     SESSION_COOKIE_SAME_SITE: z

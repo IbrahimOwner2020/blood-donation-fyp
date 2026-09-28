@@ -24,14 +24,15 @@ const activeUser = {
 describe('hospital facility scope', () => {
   test('detects the Hospital Staff role', () => {
     expect(hasRole([HOSPITAL_STAFF_ROLE], HOSPITAL_STAFF_ROLE)).toBe(true)
-    expect(isHospitalStaff(['Registered Donor'])).toBe(false)
+    expect(isHospitalStaff([])).toBe(false)
   })
 
   test('uses the fixed facility-scoped role names', () => {
     expect(isFacilityManager([FACILITY_MANAGER_ROLE])).toBe(true)
     expect(isFacilityAssignableRoleName('Hospital Staff')).toBe(true)
-    expect(isFacilityAssignableRoleName('Registered Donor')).toBe(true)
+    expect(isFacilityAssignableRoleName('Registered Donor')).toBe(false)
     expect(isFacilityAssignableRoleName('Administrator')).toBe(false)
+    expect(isFacilityAssignableRoleName('Manager')).toBe(false)
   })
 
   test('returns facility id only for hospital users', () => {

@@ -34,4 +34,28 @@ export const HEALTHCARE_FACILITY_SEEDS: readonly HealthcareFacilitySeed[] = [
     district: 'Mbeya Urban',
     active: true,
   },
+  {
+    name: 'Benjamin Mkapa Hospital',
+    region: 'Dodoma',
+    district: 'Dodoma Urban',
+    active: true,
+  },
+  {
+    name: 'Mnazi Mmoja Hospital',
+    region: 'Mjini Magharibi',
+    district: 'Mjini',
+    active: true,
+  },
+  {
+    name: 'Aga Khan Hospital Dar es Salaam',
+    region: 'Dar es Salaam',
+    district: 'Kinondoni',
+    active: true,
+  },
+  {
+    name: 'Temeke Regional Referral Hospital',
+    region: 'Dar es Salaam',
+    district: 'Temeke',
+    active: true,
+  },
 ] as const

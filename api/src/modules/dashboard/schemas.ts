@@ -85,18 +85,6 @@ export const dashboardTrendQuerySchema = z.object({
 
 export type DashboardTrendQuery = z.infer<typeof dashboardTrendQuerySchema>
 
-export const dashboardPredictionsQuerySchema = z.object({
-  facilityId: optionalPositiveInt,
-  bloodGroupId: optionalPositiveInt,
-  bloodGroup: bloodGroupCodeSchema.optional(),
-  /** Max latest-per-group rows returned (default: all blood groups). */
-  limit: z.coerce.number().int().min(1).max(50).optional().default(16),
-})
-
-export type DashboardPredictionsQuery = z.infer<
-  typeof dashboardPredictionsQuerySchema
->
-
 export const dashboardAlertsQuerySchema = z.object({
   facilityId: optionalPositiveInt,
   bloodGroupId: optionalPositiveInt,

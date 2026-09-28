@@ -115,14 +115,6 @@ export const InventoryAuditActions = {
 export type InventoryAuditAction =
   (typeof InventoryAuditActions)[keyof typeof InventoryAuditActions]
 
-/** Canonical prediction / forecast-run audit action codes (docs/10). */
-export const PredictionAuditActions = {
-  RUN: 'prediction.run',
-} as const
-
-export type PredictionAuditAction =
-  (typeof PredictionAuditActions)[keyof typeof PredictionAuditActions]
-
 /** Canonical daily AI analysis audit action codes. */
 export const AiAnalysisAuditActions = {
   RUN_REQUESTED: 'ai_analysis.run_requested',

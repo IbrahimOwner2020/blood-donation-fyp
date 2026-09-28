@@ -88,7 +88,7 @@ export async function clientLoader({
       status: "forbidden",
       session,
       message:
-        "Your session does not include donations:create. The server remains the access authority.",
+        "You do not have permission to record donations. Contact an administrator if you need access.",
     };
   }
 
@@ -185,7 +185,7 @@ export async function clientAction({ request }: ClientActionFunctionArgs) {
   if (!hasUiPermission(session, UI_PERMISSIONS.donationsCreate)) {
     return {
       error:
-        "You do not have permission to record donations (donations:create).",
+        "You do not have permission to record donations.",
     } satisfies DonationNewActionData;
   }
 
@@ -309,9 +309,8 @@ export default function DonationNewPage() {
           title="Create access restricted"
           message={
             data.message ||
-            "You do not have permission to record donations (donations:create)."
+            "You do not have permission to record donations. Contact an administrator if you need access."
           }
-          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to="/donations"

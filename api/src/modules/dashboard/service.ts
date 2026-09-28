@@ -9,7 +9,6 @@ import {
   and,
   asc,
   count,
-  desc,
   eq,
   gte,
   inArray,
@@ -20,7 +19,6 @@ import {
 
 import type { Db } from '../../db'
 import {
-  aiPredictions,
   bloodGroups,
   bloodInventory,
   demandRecords,
@@ -37,13 +35,6 @@ import { DEFAULT_EXPIRING_WITHIN_DAYS } from '../inventory/constants'
 import { getInventorySummary } from '../inventory/service'
 import type { BloodGroupInventoryCounts } from '../inventory/availability'
 import {
-  toPublicPrediction,
-  type PublicPrediction,
-  type PredictionRow,
-  type BloodGroupJoinRow,
-  type FacilityJoinRow,
-} from '../predictions/serialize'
-import {
   bucketTrendByDate,
   fillTrendRange,
   resolvePeriod,
@@ -54,7 +45,6 @@ import {
 } from './aggregate'
 import type {
   DashboardAlertsQuery,
-  DashboardPredictionsQuery,
   DashboardSummaryQuery,
   DashboardTrendQuery,
 } from './schemas'
@@ -84,11 +74,6 @@ export type DashboardTrendResult = {
   bloodGroupCode: string | null
   points: TrendPoint[]
   totalUnits: number
-}
-
-export type DashboardPredictionsResult = {
-  facilityId: number | null
-  predictions: PublicPrediction[]
 }
 
 export type DashboardAlertsResult = {
@@ -408,131 +393,6 @@ export async function getDemandTrend(
     bloodGroupCode: group?.code ?? null,
     points,
     totalUnits: sumTrendUnits(points),
-  }
-}
-
-function mapPredictionRow(
-  row: typeof aiPredictions.$inferSelect,
-): PredictionRow {
-  return {
-    id: row.id,
-    bloodGroupId: row.bloodGroupId,
-    facilityId: row.facilityId ?? null,
-    forecastStart: row.forecastStart,
-    forecastEnd: row.forecastEnd,
-    predictedUnits: row.predictedUnits,
-    modelName: row.modelName,
-    modelVersion: row.modelVersion ?? null,
-    metricsJson: row.metricsJson ?? null,
-    createdAt: row.createdAt,
-  }
-}
-
-function mapBloodGroupJoin(
-  row: typeof bloodGroups.$inferSelect | null | undefined,
-): BloodGroupJoinRow | null {
-  if (!row?.id) {
-    return null
-  }
-  return {
-    id: row.id,
-    code: row.code,
-    abo: row.abo,
-    rh: row.rh,
-  }
-}
-
-function mapFacilityJoin(
-  row: typeof healthcareFacilities.$inferSelect | null | undefined,
-): FacilityJoinRow | null {
-  if (!row?.id) {
-    return null
-  }
-  return {
-    id: row.id,
-    name: row.name,
-    region: row.region,
-    district: row.district,
-  }
-}
-
-/**
- * Latest prediction snapshot per blood group (optionally facility-scoped).
- * Includes daily series for supply-vs-demand charts.
- */
-export async function getDashboardPredictions(
-  db: Db,
-  query: DashboardPredictionsQuery,
-): Promise<DashboardPredictionsResult> {
-  const facilityId = await assertFacilityExists(db, query.facilityId)
-  const group = await resolveBloodGroupId(
-    db,
-    query.bloodGroupId,
-    query.bloodGroup,
-  )
-  const limit = query.limit ?? 16
-
-  const parts: SQL[] = []
-  if (facilityId != null) {
-    parts.push(eq(aiPredictions.facilityId, facilityId))
-  }
-  if (group) {
-    parts.push(eq(aiPredictions.bloodGroupId, group.id))
-  }
-  const whereClause =
-    parts.length === 0
-      ? undefined
-      : parts.length === 1
-        ? parts[0]
-        : and(...parts)
-
-  /** Fetch a generous window then keep latest per blood group in memory. */
-  const rows = await db
-    .select({
-      prediction: aiPredictions,
-      bloodGroup: bloodGroups,
-      facility: healthcareFacilities,
-    })
-    .from(aiPredictions)
-    .leftJoin(bloodGroups, eq(aiPredictions.bloodGroupId, bloodGroups.id))
-    .leftJoin(
-      healthcareFacilities,
-      eq(aiPredictions.facilityId, healthcareFacilities.id),
-    )
-    .where(whereClause)
-    .orderBy(desc(aiPredictions.createdAt), desc(aiPredictions.id))
-    .limit(Math.max(limit * 8, 64))
-
-  const latestByGroup = new Map<number, PublicPrediction>()
-  for (const row of rows ?? []) {
-    const prediction = row?.prediction
-    if (!prediction?.id || !prediction.bloodGroupId) {
-      continue
-    }
-    if (latestByGroup.has(prediction.bloodGroupId)) {
-      continue
-    }
-    const publicRow = toPublicPrediction(mapPredictionRow(prediction), {
-      bloodGroup: mapBloodGroupJoin(row?.bloodGroup),
-      facility: mapFacilityJoin(row?.facility),
-    })
-    if (publicRow) {
-      latestByGroup.set(prediction.bloodGroupId, publicRow)
-    }
-    if (latestByGroup.size >= limit) {
-      break
-    }
-  }
-
-  const predictions = [...latestByGroup.values()].sort((a, b) => {
-    const codeA = a.bloodGroup?.code ?? ''
-    const codeB = b.bloodGroup?.code ?? ''
-    return codeA < codeB ? -1 : codeA > codeB ? 1 : a.id - b.id
-  })
-
-  return {
-    facilityId,
-    predictions,
   }
 }
 

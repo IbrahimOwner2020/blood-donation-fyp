@@ -81,31 +81,12 @@ def _normalize_provider(raw: str | None) -> LlmProviderName:
     return "none"
 
 
-def _resolve_llm_forecast_default(
-    provider: LlmProviderName,
-    api_key: str | None,
-) -> bool:
-    """Prefer LLM by default when OpenAI is usable; stay offline-safe without a key.
-
-    Explicit ``LLM_FORECAST_DEFAULT`` always wins. When unset: ``true`` only if
-    provider is ``openai`` and ``OPENAI_API_KEY`` is set (Railway/prod). Local
-    demos without a key keep statistical/ML baselines. Ollama remains opt-in
-    via ``preferred_model=llm`` or an explicit ``LLM_FORECAST_DEFAULT=true``.
-    """
-    raw = os.getenv("LLM_FORECAST_DEFAULT")
-    if raw is not None and raw.strip() != "":
-        return raw.strip().lower() in {"1", "true", "yes", "on"}
-    return provider == "openai" and bool(api_key)
-
-
 @dataclass(frozen=True, slots=True)
 class Settings:
     model_dir: str
-    default_forecast_horizon: int
     min_training_rows: int
     llm_provider: LlmProviderName
     llm_timeout_seconds: float
-    llm_forecast_default: bool
     ollama_base_url: str
     ollama_model: str
     ollama_api_key: str | None
@@ -128,11 +109,9 @@ def get_settings() -> Settings:
     )
     return Settings(
         model_dir=os.getenv("MODEL_DIR", "models"),
-        default_forecast_horizon=int(os.getenv("DEFAULT_FORECAST_HORIZON", "7")),
         min_training_rows=int(os.getenv("MIN_TRAINING_ROWS", "30")),
         llm_provider=provider,
         llm_timeout_seconds=_env_float("LLM_TIMEOUT_SECONDS", 60.0),
-        llm_forecast_default=_resolve_llm_forecast_default(provider, api_key),
         ollama_base_url=(
             os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
         ),

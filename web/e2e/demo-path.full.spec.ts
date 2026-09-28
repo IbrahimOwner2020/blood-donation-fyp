@@ -1,7 +1,7 @@
 /**
  * Full mutating DoD path (docs/16 / TODO.md test-e2e-full):
  * login → register donor → record donation → inventory → request →
- * forecast → shortage/alerts → match donors → send mock notification →
+ * shortage/alerts → match donors → send mock notification →
  * verify history/audit.
  *
  * Soft-skips when web/API/auth is unavailable so CI without a stack does not
@@ -79,7 +79,7 @@ function uniqueSuffix(): string {
 }
 
 test.describe("docs/16 full mutating demo path", () => {
-  test("register → donate → inventory → request → forecast → notify → audit", async ({
+  test("register → donate → inventory → request → notify → audit", async ({
     page,
     request,
   }) => {
@@ -190,37 +190,6 @@ test.describe("docs/16 full mutating demo path", () => {
     }
     await page.getByRole("button", { name: /Create|Submit|Save/i }).click();
     await expect(page).toHaveURL(/\/blood-requests\/\d+/, { timeout: 30_000 });
-
-    // Forecast / predictions
-    await page.goto("/predictions", { waitUntil: "domcontentloaded" });
-    await expect(
-      page.getByRole("heading", { name: /Prediction/i }),
-    ).toBeVisible({ timeout: 20_000 });
-
-    // Prefer a run form if present on index or a dedicated control.
-    const runLink = page.getByRole("link", { name: /Run|New forecast|Forecast/i });
-    if (await runLink.count()) {
-      await runLink.first().click();
-    }
-
-    const bloodGroupOnPred =
-      page.locator('select[name="bloodGroup"], select[name="bloodGroupId"]');
-    if (await bloodGroupOnPred.count()) {
-      const name = await bloodGroupOnPred.first().getAttribute("name");
-      if (name === "bloodGroupId") {
-        await bloodGroupOnPred.first().selectOption("8");
-      } else {
-        await bloodGroupOnPred.first().selectOption("O-");
-      }
-    }
-    const runButton = page.getByRole("button", {
-      name: /Run forecast|Run prediction|Forecast|Run/i,
-    });
-    if (await runButton.count()) {
-      await runButton.first().click();
-      // Soft-continue if AI is slow/unavailable — page may show error state.
-      await page.waitForTimeout(3_000);
-    }
 
     // Alerts / shortage
     await page.goto("/alerts", { waitUntil: "domcontentloaded" });

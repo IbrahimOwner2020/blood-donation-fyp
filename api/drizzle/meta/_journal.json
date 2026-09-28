@@ -29,6 +29,13 @@
       "when": 1790052093566,
       "tag": "0003_unusual_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1790575200000,
+      "tag": "0004_assistant_workspace",
+      "breakpoints": true
     }
   ]
 }

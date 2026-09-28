@@ -15,7 +15,7 @@
 | Web | React Router `7.18.3` + React `^19` + TypeScript + Vite + Recharts |
 | AI | Python `>=3.12`, FastAPI, Pandas/NumPy/scikit-learn, optional Ollama/OpenAI LLM, pytest |
 
-**Counts (last inventory):** **92 done** · **0 open** · **0 verify-locally pending** (all verify items executed 2026-09-04).
+**Counts (last inventory):** **100 done** · **2 open** · **0 verify-locally pending** (assistant deployment checks remain listed in section 13).
 
 ---
 
@@ -182,3 +182,18 @@ See `docs/16-definition-of-done.md`. Status after 2026-09-04 close-out:
 4. Admin roles create/edit UI — **done** (`/admin/roles` forms).
 
 AI model selection vs baseline is documented in `docs/18-model-evaluation.md`.
+
+---
+
+## 13. Full-page AI Operations Assistant (2026-09-28)
+
+- [x] `assistant-storage` — Owner-only conversations/messages, immutable report artifacts, 24-hour drafts, 15-minute proposals, 90-day retention, migration, and cleanup command.
+- [x] `assistant-contract` — Validated structured blocks plus LLM-composed safe layouts across AI/API/web, with the legacy `/assistant/message` compatibility route retained.
+- [x] `assistant-workspace` — Protected responsive `/assistant` history, chat, artifacts, prompt shortcuts, language preference, sidebar entry, and full-page launcher.
+- [x] `assistant-reports` — LLM-selected cross-domain sources and layouts with API-resolved values, immutable version-2 snapshots, layout-preserving refresh, composition PDF, and per-table injection-safe UTF-8 CSV exports; version-1 snapshots remain compatible.
+- [x] `assistant-actions` — Draft/review/confirm flows use canonical donor, donation, request, inventory, notification, and AI-analysis services with authorization and audit checks.
+- [x] `assistant-privacy` — Stored messages redact phone/email values and exclude executable proposal payloads; reports exclude donor contact data.
+- [x] `assistant-retention-docs` — `bun run assistant:cleanup` and the Railway daily cron setup are documented.
+- [x] `assistant-demo-60d` — Guarded deterministic 60-day local/QA dataset for donors, donations/inventory, requests, demand, synthetic prediction/alert/notification history, and weekly `REPORT_ONLY` AI analysis; same-anchor idempotency and report population verified against local MariaDB on 2026-09-28.
+- [ ] `assistant-live-e2e` — Verify migration, authenticated browser flows, cross-domain export cookies, provider-backed notification sending, and the Railway cron service in the deployed environment.
+- [ ] `assistant-prediction-source` — Connect prediction-history/performance sections to a live authoritative forecasting source if forecasting is re-enabled; the current branch intentionally returns availability warnings instead of fabricated values.

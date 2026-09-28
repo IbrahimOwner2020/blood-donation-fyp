@@ -100,7 +100,7 @@ export async function clientLoader({
       session,
       donorId: donorIdParam,
       message:
-        "Your session does not include donors:update. The server remains the access authority.",
+        "You do not have permission to edit donors. Contact an administrator if you need access.",
     };
   }
 
@@ -164,7 +164,7 @@ export async function clientAction({
   }
   if (!hasUiPermission(session, UI_PERMISSIONS.donorsUpdate)) {
     return {
-      error: "You do not have permission to update donors (donors:update).",
+      error: "You do not have permission to update donors.",
     } satisfies DonorEditActionData;
   }
   if (!Number.isFinite(donorId)) {
@@ -246,9 +246,8 @@ export default function DonorEditPage() {
           title="Update access restricted"
           message={
             data.message ||
-            "You do not have permission to edit donors (donors:update)."
+            "You do not have permission to edit donors. Contact an administrator if you need access."
           }
-          detail="UI gate only — the server enforces authorization."
           action={
             <Link
               to={data.donorId ? `/donors/${data.donorId}` : "/donors"}
@@ -304,7 +303,7 @@ export default function DonorEditPage() {
     <div>
       <PageHeader
         title={`Edit ${formatDonorName(donor)}`}
-        description="Mutations post to the donors server. No client-side eligibility decisions."
+        description="Update this donor’s details. Eligibility is confirmed by staff, not by this form."
         actions={
           <Link
             to={`/donors/${donor.id}`}

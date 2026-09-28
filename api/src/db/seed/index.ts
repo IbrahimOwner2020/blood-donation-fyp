@@ -125,19 +125,33 @@ async function main(): Promise<void> {
       )
     }
 
-    const centresResult = await seedDonationCentres(db)
-    console.log(
-      JSON.stringify(
-        {
-          seed: 'donation_centres',
-          inserted: centresResult?.inserted ?? 0,
-          skipped: centresResult?.skipped ?? 0,
-          names: centresResult?.names ?? [],
-        },
-        null,
-        2,
-      ),
-    )
+    if (shouldSeedDemoOperations()) {
+      const centresResult = await seedDonationCentres(db)
+      console.log(
+        JSON.stringify(
+          {
+            seed: 'donation_centres',
+            inserted: centresResult?.inserted ?? 0,
+            skipped: centresResult?.skipped ?? 0,
+            names: centresResult?.names ?? [],
+          },
+          null,
+          2,
+        ),
+      )
+    } else {
+      console.log(
+        JSON.stringify(
+          {
+            seed: 'donation_centres',
+            skipped: true,
+            reason: 'SEED_DEMO_OPERATIONS disabled',
+          },
+          null,
+          2,
+        ),
+      )
+    }
 
     /** Local/demo users (Argon2id); gated for production safety. */
     if (shouldSeedDemoUsers()) {
@@ -171,19 +185,33 @@ async function main(): Promise<void> {
     }
 
     /** Optional demo healthcare facilities (idempotent). */
-    const facilitiesResult = await seedHealthcareFacilities(db)
-    console.log(
-      JSON.stringify(
-        {
-          seed: 'healthcare_facilities',
-          inserted: facilitiesResult?.inserted ?? 0,
-          skipped: facilitiesResult?.skipped ?? 0,
-          names: facilitiesResult?.names ?? [],
-        },
-        null,
-        2,
-      ),
-    )
+    if (shouldSeedDemoOperations()) {
+      const facilitiesResult = await seedHealthcareFacilities(db)
+      console.log(
+        JSON.stringify(
+          {
+            seed: 'healthcare_facilities',
+            inserted: facilitiesResult?.inserted ?? 0,
+            skipped: facilitiesResult?.skipped ?? 0,
+            names: facilitiesResult?.names ?? [],
+          },
+          null,
+          2,
+        ),
+      )
+    } else {
+      console.log(
+        JSON.stringify(
+          {
+            seed: 'healthcare_facilities',
+            skipped: true,
+            reason: 'SEED_DEMO_OPERATIONS disabled',
+          },
+          null,
+          2,
+        ),
+      )
+    }
 
     /**
      * Demo operational rows for QA (detail pages, notify, requests, forecasts).
@@ -204,6 +232,15 @@ async function main(): Promise<void> {
             requestsSkipped: opsResult?.requestsSkipped ?? 0,
             demandInserted: opsResult?.demandInserted ?? 0,
             demandSkipped: opsResult?.demandSkipped ?? 0,
+            predictionsInserted: opsResult?.predictionsInserted ?? 0,
+            predictionsSkipped: opsResult?.predictionsSkipped ?? 0,
+            alertsInserted: opsResult?.alertsInserted ?? 0,
+            alertsSkipped: opsResult?.alertsSkipped ?? 0,
+            notificationsInserted: opsResult?.notificationsInserted ?? 0,
+            notificationsSkipped: opsResult?.notificationsSkipped ?? 0,
+            aiAnalysisRunsInserted: opsResult?.aiAnalysisRunsInserted ?? 0,
+            aiAnalysisRunsSkipped: opsResult?.aiAnalysisRunsSkipped ?? 0,
+            generatedAnchor: opsResult?.generatedAnchor ?? null,
             donorNumbers: opsResult?.donorNumbers ?? [],
             requestKeys: opsResult?.requestKeys ?? [],
             actorUserId: opsResult?.actorUserId ?? null,

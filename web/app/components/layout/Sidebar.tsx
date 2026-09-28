@@ -7,12 +7,35 @@ type NavItem = {
   end?: boolean;
   permission?: string;
   anyPermission?: string[];
-  role?: string;
+  /** Show when the session has no permission codes (self-registered donors). */
+  donorSelfService?: boolean;
 };
 
 const PRIMARY_NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", end: true },
-  { to: "/my-donor-profile", label: "My donor profile", role: "Registered Donor" },
+  {
+    to: "/assistant",
+    label: "AI Assistant",
+    anyPermission: [
+      UI_PERMISSIONS.reportsRead,
+      UI_PERMISSIONS.donorsRead,
+      UI_PERMISSIONS.donorsCreate,
+      UI_PERMISSIONS.donationsRead,
+      UI_PERMISSIONS.donationsCreate,
+      UI_PERMISSIONS.inventoryRead,
+      UI_PERMISSIONS.inventoryUpdate,
+      UI_PERMISSIONS.requestsRead,
+      UI_PERMISSIONS.requestsCreate,
+      UI_PERMISSIONS.alertsRead,
+      UI_PERMISSIONS.notificationsRead,
+      UI_PERMISSIONS.notificationsSend,
+    ],
+  },
+  {
+    to: "/my-donor-profile",
+    label: "My donor profile",
+    donorSelfService: true,
+  },
   {
     to: "/donors",
     label: "Donors",
@@ -21,6 +44,7 @@ const PRIMARY_NAV: NavItem[] = [
   { to: "/donations", label: "Donations", permission: UI_PERMISSIONS.donationsRead },
   { to: "/inventory", label: "Inventory", permission: UI_PERMISSIONS.inventoryRead },
   { to: "/blood-requests", label: "Requests", permission: UI_PERMISSIONS.requestsRead },
+  { to: "/alerts", label: "Alerts", permission: UI_PERMISSIONS.alertsRead },
   { to: "/notifications", label: "Notify", permission: UI_PERMISSIONS.notificationsRead },
   { to: "/reports", label: "Reports", permission: UI_PERMISSIONS.reportsRead },
 ];
@@ -62,8 +86,8 @@ type SidebarProps = {
 };
 
 function canShowNavItem(session: AuthSession, item: NavItem): boolean {
-  if (item.role) {
-    return (session.roleLabels ?? []).includes(item.role);
+  if (item.donorSelfService) {
+    return (session.permissions ?? []).length === 0;
   }
   if (item.permission) {
     return hasUiPermission(session, item.permission);

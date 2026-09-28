@@ -83,7 +83,7 @@ aiAnalysisRoutes.use('*', requireAuth)
 
 aiAnalysisRoutes.post(
   '/run',
-  requirePermission('predictions:run', 'reports:read'),
+  requirePermission('reports:read'),
   async (c) => {
     const body = await parseJsonBody(c, runAiAnalysisBodySchema)
     const actor = c.get('user')
@@ -127,7 +127,7 @@ aiAnalysisRoutes.get(
 
 aiAnalysisRoutes.patch(
   '/settings',
-  requirePermission('predictions:run', 'notifications:send'),
+  requirePermission('reports:read', 'notifications:send'),
   async (c) => {
     const body = await parseJsonBody(c, patchAiAnalysisSettingsBodySchema)
     const settings = await updateAiAnalysisSettings(

@@ -8,11 +8,6 @@ export {
   type AlertAuditAction,
 } from './routes'
 export {
-  afterPredictionPersisted,
-  createAfterPredictionPersisted,
-  type AlertHookDeps,
-} from './hooks'
-export {
   noopAfterAlertUpserted,
   logMatchCountAfterAlertUpserted,
   createLogMatchCountAfterAlertUpserted,
@@ -67,12 +62,10 @@ export {
   listAlertMatchesQuerySchema,
   listAlertsQuerySchema,
   patchAlertStatusBodySchema,
-  recalculateAlertsBodySchema,
   type AlertIdParam,
   type ListAlertMatchesQuery,
   type ListAlertsQuery,
   type PatchAlertStatusBody,
-  type RecalculateAlertsBody,
 } from './schemas'
 export {
   toDecimalNumber,
@@ -90,12 +83,10 @@ export {
   getAlertById,
   listAlerts,
   patchAlertStatus,
-  recalculateAlerts,
   upsertAlertFromShortage,
   type AlertServiceDeps,
   type ListAlertsResult,
   type PatchAlertStatusResult,
-  type RecalculateAlertsResult,
   type UpsertAlertResult,
   type UpsertFromPredictionInput,
 } from './service'

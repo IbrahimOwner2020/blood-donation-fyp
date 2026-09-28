@@ -9,8 +9,8 @@ See the committed [`.env.example`](../.env.example) for the full template. Key g
 - **AI:** `AI_SERVICE_URL`, `API_INTERNAL_BASE_URL`, timeouts, `MODEL_DIR`, forecast knobs
 - **Frontend:** `VITE_API_URL` (Vite **bake-time** in Docker/Railway; also `web/.env` for local Vite)
 - **Bootstrap:** `RUN_MIGRATIONS`, `RUN_SEED`, `SEED_ADMIN_USER`, `SEED_DEMO_USERS`, `SEED_DEMO_OPERATIONS`
-- **Demo users (local/demo only):** `DEMO_ADMIN_*`, `DEMO_OFFICER_*`
-- **Mail / SMS:** `SMTP_*`, `SMS_PROVIDER`
+- **Demo users (local/demo only):** `DEMO_ADMIN_*`, `DEMO_MANAGER_*`, `DEMO_OFFICER_*`
+- **Mail / SMS:** `SMTP_*`, `SMS_PROVIDER` (`mock` | `nextsms` | `beem`). For NextSMS: username → `NEXTSMS_API_KEY`, password → `NEXTSMS_API_SECRET`, plus registered `NEXTSMS_SENDER_ID`. Optional sandbox: set `NEXTSMS_BASE_URL` to `https://messaging-service.co.tz/api/sms/v1/test/text/single`. For Beem: API key → `BEEM_API_KEY`, secret key → `BEEM_API_SECRET`, plus registered `BEEM_SENDER_ID` (`source_addr`). Default Beem URL: `https://apisms.beem.africa/v1/send`.
 - **LLM:** local Docker defaults to Ollama Cloud (`LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL=https://ollama.com`, `OLLAMA_API_KEY`); OpenAI/Railway uses `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL=gpt-4o-mini`
 
 ## Local database bootstrap (non-Docker API)
@@ -25,13 +25,14 @@ bun run db:migrate
 bun run db:seed
 ```
 
-`db:seed` is idempotent: blood groups, roles/permissions, donation centres, healthcare facilities, and (when allowed) demo users (Argon2id) plus demo operations (donors/donations/inventory/requests/demand). Demo passwords are for **local login only**.
+`db:seed` is idempotent for a fixed anchor: blood groups, roles/permissions, donation centres, healthcare facilities, and (when allowed) demo users (Argon2id) plus the 60-day operational/reporting dataset. Demo passwords are for **local login only**.
 
 | Flag | Default (unset) | Effect |
 | --- | --- | --- |
 | `SEED_ADMIN_USER` | off | One System Administrator from `ADMIN_*` |
 | `SEED_DEMO_USERS` | on unless `NODE_ENV=production` | Demo admin/officer |
-| `SEED_DEMO_OPERATIONS` | on unless `NODE_ENV=production` | Demo donors, donations→inventory, blood requests, ≥30d O+ demand |
+| `SEED_DEMO_OPERATIONS` | on unless `NODE_ENV=production` | Synthetic 60-day operational data, predictions, alerts, notifications, and AI-report history |
+| `DEMO_DATA_AS_OF` | current UTC date | Optional `YYYY-MM-DD` end date used to reproduce the same idempotent dataset |
 
 Set both to `false` on Railway. Demo operations require an ACTIVE user for `createdBy` (usually from `SEED_DEMO_USERS`).
 
@@ -41,7 +42,7 @@ In Docker, the API entrypoint runs migrate/seed when `RUN_MIGRATIONS` / `RUN_SEE
 
 - Do not commit real secrets.
 - Provide safe development defaults only.
-- Production / Railway: strong `SESSION_SECRET`; `COOKIE_SECURE=true`; `SESSION_COOKIE_SAME_SITE=None` when web/API are on different subdomains; `SEED_DEMO_USERS=false` and `SEED_DEMO_OPERATIONS=false` unless intentionally demoing.
+- Production / Railway: strong `SESSION_SECRET`; `COOKIE_SECURE=true`; `SESSION_COOKIE_SAME_SITE=None` when web/API are on different subdomains; `SEED_DEMO_USERS=false` and `SEED_DEMO_OPERATIONS=false` unless intentionally demoing. Never enable the synthetic 60-day dataset against a real operational database.
 - Container internal URLs use Docker/Railway service names (`DB_HOST=db`); host-side API may use `DB_HOST=127.0.0.1`.
 - Host browser URLs use exposed localhost/domain ports (`VITE_API_URL`, `APP_ORIGINS`).
 - Changing `VITE_API_URL` for a containerized web app requires a **web image rebuild**.
@@ -102,5 +103,16 @@ Web Forecasts UI defaults the model control to **LLM**. Local Docker uses Ollama
 ## Configuration Ownership
 
 API owns business thresholds such as shortage severity. AI owns model-specific configuration such as feature sets and artifact directory.
+
+The assistant introduces no additional secret. Run its retention worker daily:
+
+```bash
+cd api
+bun run assistant:cleanup
+```
+
+The command uses the normal API database configuration and permanently deletes
+expired 15-minute proposals, 24-hour drafts, and 90-day report/conversation
+records. Run migrations before enabling the full assistant UI.
 
 Railway: see [`docs/17-railway-deployment.md`](./17-railway-deployment.md).

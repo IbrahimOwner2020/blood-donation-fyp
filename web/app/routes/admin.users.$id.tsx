@@ -296,8 +296,7 @@ export default function AdminUserDetailPage() {
         <PageHeader title="User" />
         <ForbiddenState
           title="Missing permission"
-          message="users:manage is required to view or edit users."
-          detail="UI gate: users:manage | users:manage:facility"
+          message="You do not have permission to view or edit users. Contact an administrator if you need access."
           action={
             <Link to="/admin/users" className="text-sm text-nbts-teal underline">
               Back to users
@@ -488,8 +487,8 @@ export default function AdminUserDetailPage() {
                 Role assignment
               </h2>
               <p className="text-xs text-nbts-muted">
-                Replaces all roles for this user. The server limits facility
-                managers to facility-safe roles.
+                Saving replaces every role on this account. Facility managers can
+                assign only roles meant for their facility.
               </p>
               {roles.length === 0 ? (
                 <EmptyState
@@ -539,13 +538,12 @@ export default function AdminUserDetailPage() {
                   "No roles assigned."}
               </p>
               <p className="mt-3 text-xs text-nbts-muted">
-                Role editing requires role assignment permission. Assignment UI
-                is hidden; server still enforces access.
+                You do not have permission to change roles for this user.
               </p>
             </div>
           )}
 
-          {!isInactive ? (
+          {/* {!isInactive ? (
             <>
               <Form
                 ref={deactivateFormRef}
@@ -584,7 +582,7 @@ export default function AdminUserDetailPage() {
                 }}
               />
             </>
-          ) : null}
+          ) : null} */}
         </div>
       </div>
     </div>

@@ -149,6 +149,16 @@ describe('createNotificationProvider factory', () => {
     )
   })
 
+  test('createSmsProvider selects BeemSmsProvider when SMS_PROVIDER=beem', () => {
+    const provider = createSmsProvider({
+      SMS_PROVIDER: 'beem',
+      BEEM_API_KEY: 'key',
+      BEEM_API_SECRET: 'secret',
+      BEEM_SENDER_ID: 'NOTTECH',
+    })
+    expect(provider.id).toBe('beem')
+  })
+
   test('readSmtpConfigFromEnv applies Mailpit defaults', () => {
     const config = readSmtpConfigFromEnv({})
     expect(config.host).toBe('localhost')
